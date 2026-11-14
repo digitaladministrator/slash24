@@ -458,8 +458,25 @@ public final class Ui {
             d.put("ScrollBarUI", p + "FlatScrollBarUI");
         }
 
+        /**
+         * BasicLookAndFeel defines no keyboard bindings (Backspace, Delete, arrows, Ctrl+C/V…); every
+         * concrete look and feel supplies its own. Borrow the standard cross-platform set from Metal.
+         * The values are immutable lazy input maps, so they are read once and shared.
+         */
+        private static final Map<Object, Object> KEY_BINDINGS = keyBindings();
+
+        private static Map<Object, Object> keyBindings() {
+            Map<Object, Object> bindings = new java.util.HashMap<>();
+            UIDefaults metal = new javax.swing.plaf.metal.MetalLookAndFeel().getDefaults();
+            for (Object key : metal.keySet().toArray()) {
+                if (key instanceof String s && (s.contains("InputMap") || s.endsWith("Bindings"))) bindings.put(key, metal.get(key));
+            }
+            return Map.copyOf(bindings);
+        }
+
         @Override protected void initComponentDefaults(UIDefaults d) {
             super.initComponentDefaults(d);
+            d.putAll(KEY_BINDINGS);
             Theme t = theme;
             ColorUIResource window = new ColorUIResource(t.window()), view = new ColorUIResource(t.view()),
                     fg = new ColorUIResource(t.fg()), dim = new ColorUIResource(t.dim()),

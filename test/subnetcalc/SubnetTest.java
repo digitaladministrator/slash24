@@ -68,6 +68,7 @@ public final class SubnetTest {
         vlsm();
         csv();
         cidr();
+        keyBindings();
 
         if (failures > 0) {
             System.err.println(failures + " of " + checks + " checks failed");
@@ -166,6 +167,25 @@ public final class SubnetTest {
         eq("position network", "the network address", CalculatorView.position(net, 0));
         eq("position broadcast", "the broadcast address", CalculatorView.position(net, 255));
         eq("position /31", "address 2 of 2", CalculatorView.position(Subnet.parse("10.0.0.0/31"), 1));
+    }
+
+    /** Regression for 1.2.1: the custom look and feel once shipped with no editing keys at all. */
+    private static void keyBindings() {
+        Ui.theme = Theme.of(false);
+        Ui.installLookAndFeel();
+        String[][] expected = {
+            {"BACK_SPACE", "delete-previous"}, {"DELETE", "delete-next"}, {"LEFT", "caret-backward"},
+            {"HOME", "caret-begin-line"}, {"ctrl C", "copy-to-clipboard"}, {"ctrl V", "paste-from-clipboard"},
+            {"ctrl X", "cut-to-clipboard"}, {"ctrl A", "select-all"}};
+        for (javax.swing.text.JTextComponent c : new javax.swing.text.JTextComponent[] {
+                new javax.swing.JTextField(), new javax.swing.JTextArea()}) {
+            javax.swing.InputMap keys = c.getInputMap(javax.swing.JComponent.WHEN_FOCUSED);
+            for (String[] e : expected) {
+                eq(c.getClass().getSimpleName() + " " + e[0], e[1], String.valueOf(keys.get(javax.swing.KeyStroke.getKeyStroke(e[0]))));
+            }
+        }
+        eq("table arrow keys", "selectNextRow", String.valueOf(new javax.swing.JTable()
+                .getInputMap(javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(javax.swing.KeyStroke.getKeyStroke("DOWN"))));
     }
 
     private static String block(Subnet s) { return format(s.network()) + "/" + s.prefix(); }

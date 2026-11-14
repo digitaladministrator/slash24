@@ -4,6 +4,19 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-11-14
+
+### Fixed
+- **Editing keys did nothing in text fields.** Backspace, Delete, the arrow keys, Home/End,
+  Shift-selection and Ctrl+A/C/X/V had no effect; only typing new characters worked. The app's custom
+  look and feel is built on Swing's `BasicLookAndFeel`, which defines no keyboard bindings, so none
+  were installed. It now uses the standard cross-platform bindings, which also restores arrow-key
+  navigation in tables and menus. The bug was present since 1.0.0.
+
+### Added
+- Regression tests that check the editing keys are bound in fields, text areas and tables
+  (110 checks, up from 93).
+
 ## [1.2.0] - 2026-11-14
 
 ### Added
@@ -66,6 +79,7 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.2.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/digitaladministrator/subnet-calculator/releases/tag/v1.0.0
