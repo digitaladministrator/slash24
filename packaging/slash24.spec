@@ -1,20 +1,23 @@
-# Built by package.sh. The app ships its own trimmed Java runtime in /opt/subnet-calculator, so it
+# Built by package.sh. The app ships its own trimmed Java runtime in /opt/slash24, so it
 # needs no Java on the system and must not advertise or depend on the runtime's private libraries.
 %global debug_package %{nil}
 %global __os_install_post %{nil}
 %global __arch_install_post %{nil}
 %define _build_id_links none
-%global __provides_exclude_from ^/opt/subnet-calculator/.*$
+%global __provides_exclude_from ^/opt/slash24/.*$
 %global __requires_exclude ^(@BUNDLED_LIBS@)\\(
 
-Name:           subnet-calculator
+Name:           slash24
 Version:        @VERSION@
 Release:        1%{?dist}
 Summary:        IPv4 subnet calculator, VLSM planner and Cisco IOS config generator
 License:        MIT
-URL:            https://github.com/digitaladministrator/subnet-calculator
+URL:            https://github.com/digitaladministrator/slash24
 Source0:        %{name}-%{version}.tar.gz
 ExclusiveArch:  x86_64
+# Called subnet-calculator before 1.4.0; dnf upgrades the old package to this one.
+Obsoletes:      subnet-calculator < 1.4.0
+Provides:       subnet-calculator = %{version}-%{release}
 Recommends:     google-noto-sans-fonts
 Recommends:     google-noto-sans-mono-fonts
 
@@ -36,7 +39,7 @@ install -m 644 share/%{name}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/
 cat > %{buildroot}%{_datadir}/applications/%{name}.desktop <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Subnet Calculator
+Name=Slash24
 GenericName=IPv4 Subnet Calculator
 Comment=IPv4 subnets, VLSM plans, route summaries and Cisco IOS configs
 Exec=%{name}
@@ -44,7 +47,7 @@ Icon=%{name}
 Terminal=false
 Categories=Network;
 Keywords=subnet;cidr;ip;ipv4;netmask;vlsm;cisco;network;
-StartupWMClass=subnetcalc-App
+StartupWMClass=slash24-App
 DESKTOP
 
 %post

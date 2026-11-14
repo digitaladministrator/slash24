@@ -1,6 +1,6 @@
-package subnetcalc;
+package slash24;
 
-import static subnetcalc.Subnet.format;
+import static slash24.Subnet.format;
 
 import java.util.ArrayList;
 import java.util.HashSet;

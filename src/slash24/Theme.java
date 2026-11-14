@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;

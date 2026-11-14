@@ -1,6 +1,6 @@
-package subnetcalc;
+package slash24;
 
-import static subnetcalc.Subnet.format;
+import static slash24.Subnet.format;
 
 /** Dependency-free checks of the subnet arithmetic and parsing; run by build.sh. */
 public final class SubnetTest {
@@ -421,7 +421,7 @@ public final class SubnetTest {
 
     /** 1.3.3: every setting on the config page has a "?" with a description and an example. */
     private static void helpCoverage() {
-        java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userRoot().node("subnetcalc-test-" + ProcessHandle.current().pid());
+        java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userRoot().node("slash24-test-" + ProcessHandle.current().pid());
         try {
             Ui.theme = Theme.of(false);
             Ui.installLookAndFeel();

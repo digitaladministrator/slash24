@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-# Installs Subnet Calculator for the current user (menu entry, icon, launcher).
+# Installs Slash24 for the current user (menu entry, icon, launcher).
 #   ./install.sh              build if needed, then install
 #   ./install.sh --uninstall  remove everything this script installed
 set -euo pipefail
 cd "$(dirname "$0")"
-APP=subnet-calculator
+APP=slash24
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 BIN="$HOME/.local/bin"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/$APP"
 
+# Before 1.4.0 the app was called subnet-calculator; remove that install too.
+legacy_remove() {
+    rm -rf "$DATA/subnet-calculator" "${XDG_CACHE_HOME:-$HOME/.cache}/subnet-calculator" \
+        "$HOME/.local/bin/subnet-calculator" "$DATA/applications/subnet-calculator.desktop"
+}
+
 if [[ "${1:-}" == "--uninstall" ]]; then
     rm -rf "$DATA/$APP" "$CACHE" "$BIN/$APP" "$DATA/applications/$APP.desktop"
     update-desktop-database "$DATA/applications" 2>/dev/null || true
-    echo "Subnet Calculator removed."
+    echo "Slash24 removed."
     exit 0
 fi
 
+legacy_remove
 [[ -f build/$APP.jar ]] || ./build.sh
 install -Dm644 "build/$APP.jar" "$DATA/$APP/$APP.jar"
 install -Dm644 "build/$APP.classlist" "$DATA/$APP/$APP.classlist"
@@ -42,4 +49,4 @@ chmod 755 "$BIN/$APP"
 
 sed -e "s|@EXEC@|$BIN/$APP|" -e "s|@ICON@|$DATA/$APP/$APP.svg|" "packaging/$APP.desktop" > "$DATA/applications/$APP.desktop"
 update-desktop-database "$DATA/applications" 2>/dev/null || true
-echo "Installed. Launch \"Subnet Calculator\" from the application menu or run $APP."
+echo "Installed. Launch \"Slash24\" from the application menu or run $APP."

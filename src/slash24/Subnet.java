@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 /**
  * An IPv4 address plus prefix length. Every value is derived from the two ints on demand,

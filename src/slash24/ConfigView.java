@@ -1,8 +1,8 @@
-package subnetcalc;
+package slash24;
 
-import static subnetcalc.Ui.at;
-import static subnetcalc.Ui.dim;
-import static subnetcalc.Ui.status;
+import static slash24.Ui.at;
+import static slash24.Ui.dim;
+import static slash24.Ui.status;
 
 import java.awt.BorderLayout;
 import java.awt.Cursor;

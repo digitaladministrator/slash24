@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 import java.awt.event.ActionEvent;
 import java.util.ArrayList;

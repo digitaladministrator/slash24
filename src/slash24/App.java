@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -6,6 +6,7 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.util.List;
+import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
 import javax.swing.AbstractAction;
 import javax.swing.Box;
@@ -25,7 +26,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
-/** Subnet Calculator: a dependency-free Swing app styled after KDE Breeze. */
+/** Slash24: a dependency-free Swing app styled after KDE Breeze. */
 public final class App {
     /** From the jar manifest (see build.sh); "dev" when run from unpackaged classes. */
     static final String VERSION = App.class.getPackage().getImplementationVersion() != null
@@ -35,7 +36,7 @@ public final class App {
     private static final String[] MODES = {"system", "light", "dark"};
     private static final String[] MODE_NAMES = {"Match system", "Light", "Dark"};
 
-    final JFrame frame = new JFrame("Subnet Calculator");
+    final JFrame frame = new JFrame("Slash24");
     private final Preferences prefs;
     /** Pages are built the first time they are shown, which keeps startup short. */
     private final Page[] pages = new Page[PAGE_KEYS.length];
@@ -49,10 +50,10 @@ public final class App {
 
     public static void main(String[] args) {
         if (List.of(args).contains("--version")) {
-            System.out.println("Subnet Calculator " + VERSION);
+            System.out.println("Slash24 " + VERSION);
             return;
         }
-        Preferences prefs = Preferences.userNodeForPackage(App.class);
+        Preferences prefs = preferences();
         Ui.theme = Theme.of(darkFor(initialMode(prefs)));
         SwingUtilities.invokeLater(() -> {
             Ui.installLookAndFeel();
@@ -82,7 +83,7 @@ public final class App {
         tabs[start].setSelected(true);
         showPage(start);
 
-        JLabel title = new JLabel("Subnet Calculator");
+        JLabel title = new JLabel("Slash24");
         title.setFont(Ui.SANS.deriveFont(Font.BOLD, 18f));
         theme.setIcon(new Ui.Chevron(true));
         theme.setHorizontalTextPosition(SwingConstants.LEADING);
@@ -151,6 +152,23 @@ public final class App {
             menu.add(item);
         }
         return menu;
+    }
+
+    /** The app's settings. Settings saved before the rename to Slash24 (1.4.0) are moved over once. */
+    static Preferences preferences() {
+        Preferences root = Preferences.userRoot(), prefs = root.node("slash24");
+        try {
+            if (prefs.keys().length == 0 && root.nodeExists("subnetcalc")) {
+                Preferences old = root.node("subnetcalc");
+                for (String key : old.keys()) prefs.put(key, old.get(key, ""));
+                prefs.flush();
+                old.removeNode();
+                root.flush();
+            }
+        } catch (BackingStoreException e) {
+            // unreadable settings: start with the defaults
+        }
+        return prefs;
     }
 
     static String initialMode(Preferences prefs) {

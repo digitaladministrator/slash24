@@ -1,4 +1,4 @@
-Subnet Calculator @VERSION@ - installer
+Slash24 @VERSION@ - installer
 ======================================
 
 An IPv4 subnet calculator, VLSM planner, route-summary tool and Cisco IOS config generator.
@@ -20,7 +20,7 @@ Other choices:
     ./install.sh --system     install the RPM for all users (dnf-based systems)
     ./install.sh --uninstall  remove it again
 
-Then open "Subnet Calculator" from the application menu, or run: subnet-calculator
+Then open "Slash24" from the application menu, or run: slash24
 
 Requirements
 ------------
@@ -32,13 +32,13 @@ Requirements
 What is in this folder
 ----------------------
   install.sh                                    the installer
-  subnet-calculator-@VERSION@-1.*.x86_64.rpm      system-wide package for dnf-based systems
-  subnet-calculator-@VERSION@-linux-x64.tar.gz    portable package for any Linux; it contains its
+  slash24-@VERSION@-1.*.x86_64.rpm      system-wide package for dnf-based systems
+  slash24-@VERSION@-linux-x64.tar.gz    portable package for any Linux; it contains its
                                                 own install.sh for a per-user install
   SHA256SUMS                                    checksums; install.sh verifies them
   LICENSE                                       MIT licence
 
 Where it goes
 -------------
-  RPM:       /opt/subnet-calculator, plus a menu entry and /usr/bin/subnet-calculator
-  Per user:  ~/.local/share/subnet-calculator, plus a menu entry and ~/.local/bin/subnet-calculator
+  RPM:       /opt/slash24, plus a menu entry and /usr/bin/slash24
+  Per user:  ~/.local/share/slash24, plus a menu entry and ~/.local/bin/slash24

@@ -1,8 +1,25 @@
 # Changelog
 
-All notable changes to Subnet Calculator. The format follows
+All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
+
+## [1.4.0] - 2026-11-14
+
+### Changed
+- **Renamed to Slash24** (from Subnet Calculator). The window, menu entry, command (`slash24`),
+  packages (`slash24-<version>…`), install folders (`/opt/slash24`, `~/.local/share/slash24`),
+  GitHub repository and Java package all use the new name. The menu entry's description is still
+  "IPv4 Subnet Calculator", so searching the menu for "subnet" finds it.
+
+### Upgrading
+- **Settings carry over:** theme, page, recent networks and IOS config options are moved from the old
+  name on the first launch.
+- **The RPM replaces the old package:** `slash24` obsoletes `subnet-calculator`, so installing it
+  with dnf upgrades in place.
+- **Per-user installs are replaced:** the installers remove the old `subnet-calculator` files and
+  menu entry.
+- The old GitHub address redirects to the new one.
 
 ## [1.3.4] - 2026-11-14
 
@@ -189,12 +206,13 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
-[1.3.4]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.3...v1.3.4
-[1.3.3]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.2...v1.3.3
-[1.3.2]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.1...v1.3.2
-[1.3.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.0...v1.3.1
-[1.3.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.1...v1.3.0
-[1.2.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.0...v1.2.1
-[1.2.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/digitaladministrator/subnet-calculator/releases/tag/v1.0.0
+[1.4.0]: https://github.com/digitaladministrator/slash24/compare/v1.3.4...v1.4.0
+[1.3.4]: https://github.com/digitaladministrator/slash24/compare/v1.3.3...v1.3.4
+[1.3.3]: https://github.com/digitaladministrator/slash24/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/digitaladministrator/slash24/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/digitaladministrator/slash24/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/digitaladministrator/slash24/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/digitaladministrator/slash24/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/digitaladministrator/slash24/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/digitaladministrator/slash24/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/digitaladministrator/slash24/releases/tag/v1.0.0

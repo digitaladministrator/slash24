@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 import java.awt.Component;
 import java.awt.Container;
@@ -18,7 +18,7 @@ final class Training {
     private Training() { }
 
     public static void main(String[] args) throws Exception {
-        Preferences prefs = Preferences.userRoot().node("subnetcalc-training-" + ProcessHandle.current().pid());
+        Preferences prefs = Preferences.userRoot().node("slash24-training-" + ProcessHandle.current().pid());
         try {
             SwingUtilities.invokeAndWait(() -> {
                 for (boolean dark : new boolean[] {true, false}) {

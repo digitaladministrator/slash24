@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Subnet Calculator installer. Run it from a terminal in this folder:
+# Slash24 installer. Run it from a terminal in this folder:
 #   ./install.sh              Fedora / RHEL family: system-wide RPM (asks for your password).
 #                             Any other Linux: installs just for you.
 #   ./install.sh --user       just for you, no password needed (any Linux)
@@ -7,7 +7,7 @@
 #   ./install.sh --uninstall  remove whichever version is installed
 set -euo pipefail
 cd "$(dirname "$0")"
-APP=subnet-calculator
+APP=slash24
 VERSION=@VERSION@
 TARBALL="$APP-$VERSION-linux-x64.tar.gz"
 RPM=$(ls "$APP-$VERSION"-*.x86_64.rpm 2>/dev/null | head -1 || true)
@@ -47,7 +47,7 @@ system_install() {
     [[ -n "$RPM" ]] || fail "the RPM package is missing from this folder"
     command -v dnf >/dev/null || fail "dnf was not found; use ./install.sh --user instead"
     as_root dnf install -y "./$RPM"
-    echo "Subnet Calculator $VERSION is installed for all users. Open it from the application menu, or run: $APP"
+    echo "Slash24 $VERSION is installed for all users. Open it from the application menu, or run: $APP"
 }
 
 uninstall() {
@@ -62,7 +62,7 @@ uninstall() {
         update-desktop-database "$data/applications" 2>/dev/null || true
         removed=yes
     fi
-    [[ $removed == yes ]] && echo "Subnet Calculator has been removed." || echo "Subnet Calculator was not installed."
+    [[ $removed == yes ]] && echo "Slash24 has been removed." || echo "Slash24 was not installed."
 }
 
 case "${1:-auto}" in

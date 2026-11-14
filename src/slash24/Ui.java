@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
@@ -477,7 +477,7 @@ public final class Ui {
 
     /** Basic look and feel with every colour, font and border taken from the current {@link Theme}. */
     public static final class Laf extends BasicLookAndFeel {
-        @Override public String getName() { return "Subnet Calculator"; }
+        @Override public String getName() { return "Slash24"; }
         @Override public String getID() { return getName(); }
         @Override public String getDescription() { return "Flat look matching the KDE colour scheme"; }
         @Override public boolean isNativeLookAndFeel() { return false; }

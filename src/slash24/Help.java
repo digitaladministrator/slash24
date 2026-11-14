@@ -1,4 +1,4 @@
-package subnetcalc;
+package slash24;
 
 import java.util.Map;
 

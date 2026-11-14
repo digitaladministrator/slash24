@@ -1,4 +1,6 @@
-# Subnet Calculator
+# Slash24
+
+*Called Subnet Calculator before version 1.4.0.*
 
 A fast IPv4 subnet calculator, VLSM planner, route-summarization tool and Cisco IOS config
 generator for the Linux desktop,
@@ -12,7 +14,7 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 | IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.3.4**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.4.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -115,7 +117,7 @@ The packages include their own trimmed Java runtime, so nothing else has to be i
 Needs a Java 25 JDK. On Fedora: `sudo dnf install java-25-openjdk-devel`
 
 ```sh
-./build.sh      # compiles, runs the tests, writes build/subnet-calculator.jar
+./build.sh      # compiles, runs the tests, writes build/slash24.jar
 ./install.sh    # developer install for the current user, using the system Java
 ./package.sh    # builds the installers into dist/ (also needs java-25-openjdk-jmods and rpm-build)
 ```
@@ -131,13 +133,13 @@ Needs a Java 25 JDK. On Fedora: `sudo dnf install java-25-openjdk-devel`
   `ToolsView` and `ConfigView` are the four pages.
 - Pages are built the first time they are opened, and the config form only re-lays itself out when
   a row actually appears or disappears.
-- Startup: the build records which classes a launch loads (`tools/subnetcalc/Training.java`, run
+- Startup: the build records which classes a launch loads (`tools/slash24/Training.java`, run
   headless) and installing turns that list into a class-data-sharing archive in a separate short
   Java run. With it the window opens about a third faster. The launcher also uses a small heap, the
   serial GC and a quick-start JIT, so memory use stays low.
 - Packaging: `jlink` builds a runtime with only the three modules the app uses (about 59 MB); the
   RPM installs it under `/opt` without exposing its private libraries as dependencies.
-- Tests are a plain Java class (`test/subnetcalc/SubnetTest.java`) run by `build.sh`, with no test framework.
+- Tests are a plain Java class (`test/slash24/SubnetTest.java`) run by `build.sh`, with no test framework.
 - The version lives in `VERSION` and is stamped into the jar manifest, which the app shows next to its title.
 
 ## License

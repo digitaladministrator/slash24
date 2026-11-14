@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Subnet Calculator
+Name=Slash24
 GenericName=IPv4 Subnet Calculator
 Comment=Work out IPv4 networks, host ranges, masks and subnets
 Exec=@EXEC@
@@ -8,4 +8,4 @@ Icon=@ICON@
 Terminal=false
 Categories=Network;
 Keywords=subnet;cidr;ip;ipv4;netmask;network;
-StartupWMClass=subnetcalc-App
+StartupWMClass=slash24-App
