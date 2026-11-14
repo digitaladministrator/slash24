@@ -68,7 +68,7 @@ final class ConfigView implements Page {
             uplinkPortRows = new ArrayList<>(), stickRows = new ArrayList<>(), layer2Rows = new ArrayList<>(),
             linkRows = new ArrayList<>(), dhcpRows = new ArrayList<>(), ospfRows = new ArrayList<>(),
             uplinkRows = new ArrayList<>(), poolRows = new ArrayList<>(), natRows = new ArrayList<>();
-    private final JLabel lanPortLabel, uplinkPortLabel;
+    private final Row lanPortRow, uplinkPortRow;
     private final AccessForm routerAccess, switchAccess;
     private final JTextField routerName;
 
@@ -91,7 +91,7 @@ final class ConfigView implements Page {
         routing = choice("routing", new String[] {"Router on a stick", "Port per subnet"}, oldDesign == 1 ? 1 : 0,
                 i -> options.routing = IosConfig.Routing.values()[i]);
         wideRow("Inter-VLAN routing", routing, routerRoutingRows);
-        lanPortLabel = row("Trunk port", tip(text("lanPort", d.lanPort, 18, v -> options.lanPort = v), "An interface name, or auto / empty for the first free port"), null).label();
+        lanPortRow = row("Trunk port", tip(text("lanPort", d.lanPort, 18, v -> options.lanPort = v), "An interface name, or auto / empty for the first free port"), null);
 
         section("Switch", null);
         switchKind = choice("switchKind", new String[] {"None", "Layer 2", "Layer 3"}, oldDesign == 2 ? 2 : 1,
@@ -100,7 +100,7 @@ final class ConfigView implements Page {
         row("Hostname", text("switchName", d.switchName, 12, v -> options.switchName = v), switchOnly);
         row("Port type", choice("switchPortType", PORT_TYPES, 0, i -> options.switchPortType = PORT_TYPES[i]), switchOnly);
         row("Numbering", choice("switchNumbering", new String[] {"0/1", "1/0/1"}, 0, i -> options.switchStacked = i == 1), switchOnly);
-        uplinkPortLabel = row("Trunk port", tip(text("uplinkPort", d.uplinkPort, 18, v -> options.uplinkPort = v), "An interface name, or auto / empty for the usual uplink port"), uplinkPortRows).label();
+        uplinkPortRow = row("Trunk port", tip(text("uplinkPort", d.uplinkPort, 18, v -> options.uplinkPort = v), "An interface name, or auto / empty for the usual uplink port"), uplinkPortRows);
         row("First VLAN ID", number("vlanStart", d.vlanStart, "First VLAN ID", null, v -> options.vlanStart = v), switchOnly);
         row("VLAN ID step", number("vlanStep", d.vlanStep, "VLAN ID step", null, v -> options.vlanStep = v), switchOnly);
         row("Native VLAN", number("nativeVlan", 0, "Native VLAN", 0, v -> options.nativeVlan = v), stickRows);
@@ -225,10 +225,10 @@ final class ConfigView implements Page {
         boolean hasSwitch = kind != 0, layer3 = kind == 2, stick = !layer3 && routing.selected() == 0;
         sections.forEach(Section::apply);
         showIf(routerRoutingRows, !layer3);
-        lanPortLabel.setText(layer3 ? "Port to switch" : stick ? "Trunk port" : "First LAN port");
+        lanPortRow.relabel("Router", layer3 ? "Port to switch" : stick ? "Trunk port" : "First LAN port");
         showIf(switchOnly, hasSwitch);
         showIf(uplinkPortRows, hasSwitch && (layer3 || stick));
-        uplinkPortLabel.setText(layer3 ? "Routed port to router" : "Trunk port");
+        uplinkPortRow.relabel("Switch", layer3 ? "Routed port to router" : "Trunk port");
         showIf(stickRows, hasSwitch && stick);
         showIf(layer2Rows, kind == 1);
         routerAccess.update(true);
@@ -289,10 +289,12 @@ final class ConfigView implements Page {
     private final class Section {
         private final List<JComponent> parts = new ArrayList<>();
         private final String key;
+        final String title;
         private final Ui.Chevron chevron = new Ui.Chevron(true);
         boolean expanded;
 
         Section(String title) {
+            this.title = title;
             key = "ios.section." + title;
             expanded = prefs.getBoolean(key, true);
             chevron.down = expanded;
@@ -349,38 +351,48 @@ final class ConfigView implements Page {
         current = section;
     }
 
-    record Row(JLabel label, JComponent control) {
+    /** A form row: its label, the label with its help icon ({@code box}), and the control. */
+    record Row(JLabel label, JComponent box, JComponent control) {
         void addTo(List<JComponent> group) {
-            group.add(label);
+            group.add(box);
             group.add(control);
+        }
+
+        /** Changes the label and switches the help to match it. */
+        void relabel(String section, String text) {
+            if (text.equals(label.getText())) return;
+            label.setText(text);
+            Ui.HelpIcon help = Ui.helpIn(box);
+            if (help != null) help.setEntry(Help.find(section, text));
         }
     }
 
     private Row row(String label, JComponent control, List<JComponent> group) {
         JLabel l = dim(label);
-        form.add(l, at(0, formRow, 1));
+        JComponent box = Ui.withHelp(l, current.title);
+        form.add(box, at(0, formRow, 1));
         GridBagConstraints c = Ui.wide(at(1, formRow++, 1));
         c.insets.right = 0;
         c.fill = GridBagConstraints.NONE;
         form.add(control, c);
-        current.add(l);
+        current.add(box);
         current.add(control);
-        Row row = new Row(l, control);
+        Row row = new Row(l, box, control);
         if (group != null) row.addTo(group);
         return row;
     }
 
     /** A label on its own line with the control below, for controls too wide for two columns. */
     private void wideRow(String label, JComponent control, List<JComponent> group) {
-        JLabel l = dim(label);
-        form.add(l, at(0, formRow++, 2));
+        JComponent box = Ui.withHelp(dim(label), current.title);
+        form.add(box, at(0, formRow++, 2));
         GridBagConstraints c = at(0, formRow++, 2);
         c.insets.right = 0;
         form.add(control, c);
-        current.add(l);
+        current.add(box);
         current.add(control);
         if (group != null) {
-            group.add(l);
+            group.add(box);
             group.add(control);
         }
     }

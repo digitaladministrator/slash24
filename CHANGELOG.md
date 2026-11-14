@@ -4,6 +4,18 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.3] - 2026-11-14
+
+### Added
+- **Hover help on every setting.** A small circled **?** sits next to each option on the IOS config
+  page and next to the main inputs on the Calculator, VLSM planner and Route tools pages. Hovering it
+  shows a short description of the setting and an example (for instance, Management VLAN: what it is
+  for, what "auto" and empty do, and `40`). Labels that change with the design, such as the router's
+  Trunk port / First LAN port / Port to switch, switch their help too.
+- Help tooltips appear after a quarter of a second and stay up for 30 seconds so they can be read.
+- All help text lives in one place (`Help.java`), and a test checks that every config setting has it
+  (192 checks, up from 185).
+
 ## [1.3.2] - 2026-11-14
 
 ### Changed
@@ -153,6 +165,7 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.3.3]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.1...v1.3.0

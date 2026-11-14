@@ -70,6 +70,7 @@ public final class SubnetTest {
         cidr();
         keyBindings();
         ios();
+        helpCoverage();
 
         if (failures > 0) {
             System.err.println(failures + " of " + checks + " checks failed");
@@ -414,6 +415,37 @@ public final class SubnetTest {
                 fail("ios should reject " + b[0] + " = " + b[1]);
             } catch (IllegalArgumentException expected) {
                 // rejected with a message for the user
+            }
+        }
+    }
+
+    /** 1.3.3: every setting on the config page has a "?" with a description and an example. */
+    private static void helpCoverage() {
+        java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userRoot().node("subnetcalc-test-" + ProcessHandle.current().pid());
+        try {
+            Ui.theme = Theme.of(false);
+            Ui.installLookAndFeel();
+            ConfigView view = new ConfigView(prefs, new VlsmView(prefs), () -> { });
+            javax.swing.JPanel form = (javax.swing.JPanel) ((javax.swing.JScrollPane) ((javax.swing.JPanel) view.root().getComponent(0))
+                    .getComponent(0)).getViewport().getView();
+            java.util.List<String> missing = new java.util.ArrayList<>();
+            int helped = 0;
+            for (java.awt.Component c : form.getComponents()) {
+                if (c instanceof javax.swing.JLabel l && l.getIcon() == null && !l.getText().startsWith("<html>")) missing.add(l.getText());
+                if (c instanceof javax.swing.JPanel p && Ui.helpIn(p) != null) helped++;
+            }
+            eq("config settings without help", "[]", missing.toString());
+            eq("config settings with help", true, helped >= 60);
+            for (String[] label : new String[][] {{"Router", "Trunk port"}, {"Router", "First LAN port"}, {"Router", "Port to switch"},
+                    {"Switch", "Trunk port"}, {"Switch", "Routed port to router"}}) {
+                Help.Entry e = Help.find(label[0], label[1]);
+                eq("help for " + label[0] + " " + label[1], true, e != null && !e.example().isBlank());
+            }
+        } finally {
+            try {
+                prefs.removeNode();
+            } catch (java.util.prefs.BackingStoreException ignored) {
+                // a leftover empty test node is harmless
             }
         }
     }

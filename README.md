@@ -12,7 +12,7 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 | IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.3.2**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.3.3**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -82,6 +82,7 @@ that setting out of the config, and "auto" picks a value for you.
 - Handles /31 point-to-point links (RFC 3021) and /32 host routes correctly.
 - **Theme** dropdown: *Match system* follows the Plasma colour scheme and accent colour live,
   including changes made while the app is open; or pick *Light* or *Dark*. The choice is remembered.
+- **Help on every setting:** hover the **?** next to a setting for a short description and an example.
 - **Recent** (or the Down arrow) on the network fields lists the last 10 networks you used.
 - Errors wait until you pause typing, so half-typed input like `192.168.` isn't flagged straight away.
 

@@ -48,6 +48,7 @@ public final class App {
         Ui.theme = Theme.of(darkFor(initialMode(prefs)));
         SwingUtilities.invokeLater(() -> {
             Ui.installLookAndFeel();
+            Ui.installTooltipTiming();
             App app = new App(prefs);
             app.frame.setVisible(true);
             app.followDesktop();

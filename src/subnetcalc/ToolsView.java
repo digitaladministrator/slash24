@@ -58,11 +58,11 @@ final class ToolsView implements Page {
         rangeTab.addActionListener(e -> setRangeMode(true));
 
         JPanel summarize = new JPanel(new BorderLayout(0, 6));
-        summarize.add(dim("Networks to summarize: one per line, or separated by commas"), BorderLayout.NORTH);
+        summarize.add(Ui.withHelp(dim("Networks to summarize: one per line, or separated by commas"), ""), BorderLayout.NORTH);
         networksBox.setMinimumSize(networksBox.getPreferredSize());
         summarize.add(networksBox, BorderLayout.CENTER);
         JPanel range = new JPanel(new BorderLayout(0, 6));
-        range.add(dim("First and last address of the range"), BorderLayout.NORTH);
+        range.add(Ui.withHelp(dim("First and last address of the range"), ""), BorderLayout.NORTH);
         range.add(Ui.row(from, dim("to"), to), BorderLayout.CENTER);
         inputs.add(summarize, "summarize");
         inputs.add(range, "range");

@@ -683,6 +683,69 @@ public final class Ui {
         }
     }
 
+    /**
+     * A small circled "?" that shows a setting's description and an example when hovered.
+     * Tooltips stay up long enough to read (see {@link #installTooltipTiming()}).
+     */
+    static final class HelpIcon extends JComponent {
+        HelpIcon(Help.Entry entry) {
+            setEntry(entry);
+            setFocusable(false);
+        }
+
+        void setEntry(Help.Entry entry) {
+            setToolTipText(entry == null ? null : tooltip(entry));
+            setVisible(entry != null);
+        }
+
+        private static String tooltip(Help.Entry e) {
+            return "<html><div style='width:260px'>" + escape(e.text())
+                    + "<br><br><b>Example:</b><br><code>" + escape(e.example()).replace("\n", "<br>") + "</code></div></html>";
+        }
+
+        private static String escape(String s) {
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        }
+
+        @Override public Dimension getPreferredSize() { return new Dimension(15, 15); }
+        @Override public Dimension getMinimumSize() { return getPreferredSize(); }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.dim());
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.draw(new java.awt.geom.Ellipse2D.Float(1, 1, 13, 13));
+            g2.setFont(SANS.deriveFont(Font.BOLD, 10f));
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString("?", (15 - fm.stringWidth("?")) / 2f, (15 - fm.getHeight()) / 2f + fm.getAscent());
+            g2.dispose();
+        }
+    }
+
+    /** {@code label} followed by its help icon, when {@link Help} has an entry for it. */
+    static JComponent withHelp(JLabel label, String section) {
+        Help.Entry entry = Help.find(section, label.getText());
+        if (entry == null) return label;
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        p.add(label);
+        p.add(Box.createHorizontalStrut(5));
+        p.add(new HelpIcon(entry));
+        return p;
+    }
+
+    /** The help icon inside a {@link #withHelp} box, if any. */
+    static HelpIcon helpIn(JComponent box) {
+        for (Component c : box.getComponents()) if (c instanceof HelpIcon h) return h;
+        return null;
+    }
+
+    /** Hover help shows quickly and stays up long enough to read. */
+    static void installTooltipTiming() {
+        javax.swing.ToolTipManager t = javax.swing.ToolTipManager.sharedInstance();
+        t.setInitialDelay(250);
+        t.setDismissDelay(30_000);
+    }
+
     // ---- custom components ---------------------------------------------------------------------
 
     /** Breeze-style on/off switch. */

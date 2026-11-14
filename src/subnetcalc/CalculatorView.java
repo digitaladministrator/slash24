@@ -54,7 +54,7 @@ final class CalculatorView implements Page {
 
         JPanel grid = new JPanel(new GridBagLayout());
         int y = 0;
-        grid.add(dim("IPv4 address with prefix or netmask"), at(0, y++, 4));
+        grid.add(Ui.withHelp(dim("IPv4 address with prefix or netmask"), ""), at(0, y++, 4));
         JPanel inputRow = new JPanel(new BorderLayout(8, 0));
         inputRow.add(input, BorderLayout.CENTER);
         inputRow.add(history.button(input), BorderLayout.EAST);
@@ -73,13 +73,13 @@ final class CalculatorView implements Page {
         grid.add(maskBits, at(1, y++, 3));
         GridBagConstraints c = at(0, y, 1);
         c.insets.top = 10;
-        grid.add(dim("Contains?"), c);
+        grid.add(Ui.withHelp(dim("Contains?"), ""), c);
         c = at(1, y++, 3);
         c.insets.top = 10;
         grid.add(Ui.row(contains, containsInfo), c);
         c = at(0, y++, 4);
         c.insets = new Insets(14, 0, 6, 0);
-        grid.add(Ui.row(dim("Split into  /"), split, splitInfo), c);
+        grid.add(Ui.row(Ui.withHelp(dim("Split into  /"), ""), split, splitInfo), c);
         JScrollPane scroll = Ui.table(rows, 60, 150, 270, 130, 100);
         table = Ui.tableIn(scroll);
         grid.add(scroll, Ui.fill(at(0, y, 4)));
