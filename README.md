@@ -14,7 +14,7 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 | IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.4.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.4.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -100,8 +100,12 @@ that setting out of the config, and "auto" picks a value for you.
 
 ## Install
 
-Download the installer files from the latest [GitHub release](../../releases) (or build them, see
-below), put them in one folder and run:
+Download from the latest [GitHub release](../../releases). Everything includes its own Java runtime.
+
+**Windows:** run `Slash24-<version>-windows-x64.msi` (Start menu entry, optional desktop shortcut,
+upgrades in place), or unzip `Slash24-<version>-windows-x64.zip` anywhere and run `Slash24.exe`.
+
+**Linux:** put the Linux files in one folder and run:
 
 ```sh
 ./install.sh              # Fedora/RHEL family: system-wide RPM; any other Linux: just for you
@@ -109,8 +113,7 @@ below), put them in one folder and run:
 ./install.sh --uninstall
 ```
 
-The packages include their own trimmed Java runtime, so nothing else has to be installed. They need
-64-bit Linux with glibc 2.38 or newer (Fedora 39+, Ubuntu 24.04+, Debian 13+).
+The Linux packages need 64-bit Linux; `INSTALL.txt` lists the minimum glibc for that release.
 
 ## Build from source
 
@@ -119,8 +122,12 @@ Needs a Java 25 JDK. On Fedora: `sudo dnf install java-25-openjdk-devel`
 ```sh
 ./build.sh      # compiles, runs the tests, writes build/slash24.jar
 ./install.sh    # developer install for the current user, using the system Java
-./package.sh    # builds the installers into dist/ (also needs java-25-openjdk-jmods and rpm-build)
+./package.sh    # Linux installers into dist/ (also needs java-25-openjdk-jmods and rpm-build)
+./package-windows.sh  # Windows .msi and .zip (on Windows, in Git Bash, with the WiX Toolset)
 ```
+
+GitHub Actions (`.github/workflows/build.yml`) builds and tests both platforms on every push, and
+publishes the installers when a version tag such as `v1.4.1` is pushed.
 
 `./install.sh --uninstall` removes the developer install.
 

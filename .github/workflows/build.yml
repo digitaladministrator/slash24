@@ -1,0 +1,83 @@
+# Builds and tests Slash24 on Linux and Windows for every push and pull request.
+# Pushing a version tag (v1.2.3) also publishes the installers on that GitHub release.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux packages
+    # Eclipse Temurin is built for old glibc versions, so these packages run on most current distributions.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Install rpmbuild
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Build, test and package
+        run: ./package.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows packages
+    runs-on: windows-2022 # includes the WiX Toolset that jpackage uses for the .msi
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Build, test and package
+        run: ./package-windows.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums for every download
+        working-directory: artifacts
+        run: sha256sum *.rpm *.tar.gz *.msi *.zip > SHA256SUMS
+      - name: Create the release if needed, then attach the files
+        run: |
+          VERSION="${TAG#v}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+            printf '\n### Download\n- **Windows:** the .msi installer, or the .zip to run without installing\n- **Linux:** all the Linux files into one folder, then run `./install.sh` (see INSTALL.txt)\n\nEverything includes its own Java runtime.\n' >> notes.md
+            gh release create "$TAG" --title "Slash24 $VERSION" --notes-file notes.md --verify-tag
+          fi
+          gh release upload "$TAG" artifacts/* --clobber

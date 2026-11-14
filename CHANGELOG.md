@@ -4,6 +4,20 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-11-14
+
+### Added
+- **Windows builds:** an `.msi` installer (Start menu entry, optional desktop shortcut, choice of
+  folder, in-place upgrades) and a portable `.zip`, both with their own Java runtime.
+- **Automatic builds with GitHub Actions:** every push and pull request is built and tested on Linux
+  and Windows; pushing a version tag publishes all the installers and a combined checksum list on the
+  GitHub release.
+- Linux packages are now built with Eclipse Temurin on GitHub, which supports much older glibc
+  versions, so they run on more distributions. The installer works out the real minimum from the
+  bundled runtime instead of assuming 2.38.
+- Windows: Segoe UI and Consolas fonts, and "Match system" follows the Windows dark-mode setting.
+- Windows `.ico` and 256 px PNG icons (`tools/slash24/IconTool.java` regenerates them).
+
 ## [1.4.0] - 2026-11-14
 
 ### Changed
@@ -206,6 +220,7 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.4.1]: https://github.com/digitaladministrator/slash24/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/digitaladministrator/slash24/compare/v1.3.4...v1.4.0
 [1.3.4]: https://github.com/digitaladministrator/slash24/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/digitaladministrator/slash24/compare/v1.3.2...v1.3.3

@@ -36,7 +36,31 @@ record Theme(boolean dark, Color window, Color view, Color alt, Color fg, Color 
     }
 
     /** Whether the desktop colour scheme is dark. Light is assumed when it cannot be read. */
-    static boolean systemDark() { return kdeWindow != null && luma(kdeWindow) < 128; }
+    static boolean systemDark() {
+        if (kdeWindow != null) return luma(kdeWindow) < 128;
+        if (windowsDark == null) windowsDark = readWindowsDarkMode();
+        return windowsDark;
+    }
+
+    private static Boolean windowsDark;
+
+    /** Windows keeps its app dark-mode setting in the registry; anything else without KDE is light. */
+    private static boolean readWindowsDarkMode() {
+        if (!System.getProperty("os.name", "").startsWith("Windows")) return false;
+        try {
+            Process p = new ProcessBuilder("reg", "query",
+                    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "/v", "AppsUseLightTheme")
+                    .redirectErrorStream(true).start();
+            String out = new String(p.getInputStream().readAllBytes());
+            p.waitFor();
+            return out.contains("0x0"); // AppsUseLightTheme = 0 means dark
+        } catch (IOException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
 
     static Theme of(boolean dark) {
         Color negative = new Color(218, 68, 83);

@@ -88,8 +88,10 @@ public final class Ui {
     private Ui() { }
 
     static Theme theme;
-    static final Font SANS = new Font("Noto Sans", Font.PLAIN, 13);
-    static final Font MONO = new Font("Noto Sans Mono", Font.PLAIN, 13);
+    /** Windows has no Noto fonts, so it gets its own UI and code fonts. */
+    private static final boolean WINDOWS = System.getProperty("os.name", "").startsWith("Windows");
+    static final Font SANS = new Font(WINDOWS ? "Segoe UI" : "Noto Sans", Font.PLAIN, 13);
+    static final Font MONO = new Font(WINDOWS ? "Consolas" : "Noto Sans Mono", Font.PLAIN, 13);
     static final float ARC = 8;
 
     static void installLookAndFeel() {
@@ -204,14 +206,18 @@ public final class Ui {
         return g2;
     }
 
-    static List<Image> icons() { return List.of(icon(16), icon(32), icon(48), icon(64)); }
+    static List<Image> icons() {
+        Color accent = theme.accent();
+        return List.of(icon(16, accent), icon(32, accent), icon(48, accent), icon(64, accent));
+    }
 
-    private static Image icon(int size) {
+    /** The app icon: "/24" on a rounded square. Also used to generate the packaged icon files. */
+    static BufferedImage icon(int size, Color accent) {
         BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        g.setColor(theme.accent());
+        g.setColor(accent);
         g.fill(new RoundRectangle2D.Float(size * .06f, size * .06f, size * .88f, size * .88f, size * .25f, size * .25f));
         g.setColor(Color.WHITE);
         g.setFont(SANS.deriveFont(Font.BOLD, size * .38f));

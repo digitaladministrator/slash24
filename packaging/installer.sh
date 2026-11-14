@@ -27,11 +27,12 @@ check_system() {
     [[ $(uname -m) == x86_64 ]] || fail "this package is for 64-bit Intel/AMD (x86_64) systems"
     local glibc
     glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')
-    if [[ -n "$glibc" ]] && [[ $(printf '%s\n2.38\n' "$glibc" | sort -V | head -1) != 2.38 ]]; then
-        fail "glibc $glibc is too old; 2.38 or newer is needed (Fedora 39+, Ubuntu 24.04+, Debian 13+)"
+    if [[ -n "$glibc" ]] && [[ $(printf '%s\n@GLIBC@\n' "$glibc" | sort -V | head -1) != @GLIBC@ ]]; then
+        fail "glibc $glibc is too old; @GLIBC@ or newer is needed"
     fi
     if command -v sha256sum >/dev/null && [[ -f SHA256SUMS ]]; then
-        sha256sum --quiet -c SHA256SUMS || fail "the package files are damaged; download them again"
+        # --ignore-missing: the release's checksum list also covers the Windows downloads
+        sha256sum --quiet --ignore-missing -c SHA256SUMS || fail "the package files are damaged; download them again"
     fi
 }
 

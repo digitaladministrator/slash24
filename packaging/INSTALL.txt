@@ -25,7 +25,7 @@ Then open "Slash24" from the application menu, or run: slash24
 Requirements
 ------------
   * 64-bit Linux on Intel/AMD (x86_64)
-  * glibc 2.38 or newer: Fedora 39+, RHEL/Rocky/Alma 10+, Ubuntu 24.04+, Debian 13+
+  * glibc @GLIBC@ or newer (run "ldd --version" to see yours)
   * A graphical desktop (X11 or Wayland with XWayland)
   * Optional: the Noto Sans and Noto Sans Mono fonts for the intended look
 
