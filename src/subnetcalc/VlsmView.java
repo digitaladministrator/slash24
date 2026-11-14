@@ -35,6 +35,8 @@ final class VlsmView implements Page {
     private final History history;
     private final JButton export = new JButton("Export CSV…");
     private final JButton copyTable = new JButton("Copy table");
+    private final List<Runnable> planListeners = new java.util.ArrayList<>();
+    private Vlsm.Plan plan;
 
     VlsmView(Preferences prefs) {
         history = new History(prefs, "history.vlsm");
@@ -115,7 +117,14 @@ final class VlsmView implements Page {
         show(plan);
     }
 
+    /** The current valid plan, or null while the inputs have a problem. */
+    Vlsm.Plan plan() { return plan; }
+
+    void onPlanChange(Runnable listener) { planListeners.add(listener); }
+
     private void show(Vlsm.Plan plan) {
+        this.plan = plan;
+        planListeners.forEach(Runnable::run);
         rows.set(plan);
         export.setEnabled(plan != null);
         copyTable.setEnabled(plan != null);

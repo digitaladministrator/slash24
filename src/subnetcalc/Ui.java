@@ -310,22 +310,31 @@ public final class Ui {
         return scroll;
     }
 
+    /** Something that writes a file; runs on a background thread. */
+    interface FileWriter {
+        void write(Path path) throws IOException;
+    }
+
+    static void exportCsv(AbstractButton button, Rows model, String suggestedName) {
+        Rows data = model.snapshot();
+        saveAs(button, suggestedName, "csv", "CSV files", path -> Csv.write(path, data));
+    }
+
     /**
      * Asks where to save (KDE's own dialog when kdialog is installed, otherwise the toolkit's) and
-     * writes the CSV on a background thread so large exports never freeze the window.
+     * writes the file on a background thread so large exports never freeze the window.
      */
-    static void exportCsv(AbstractButton button, Rows model, String suggestedName) {
+    static void saveAs(AbstractButton button, String suggestedName, String extension, String description, FileWriter writer) {
         if (Boolean.TRUE.equals(button.getClientProperty("busy"))) return;
         button.putClientProperty("busy", true);
-        Rows data = model.snapshot();
         Window owner = SwingUtilities.getWindowAncestor(button);
         Thread.ofVirtual().start(() -> {
             String error = null;
             boolean saved = false;
             try {
-                Path path = askSavePath(owner, suggestedName);
+                Path path = askSavePath(owner, suggestedName, extension, description);
                 if (path != null) {
-                    Csv.write(path, data);
+                    writer.write(path);
                     saved = true;
                 }
             } catch (IOException | RuntimeException e) {
@@ -339,26 +348,27 @@ public final class Ui {
                 button.putClientProperty("busy", false);
                 if (ok) flash(button, "Saved");
                 if (problem != null) {
-                    JOptionPane.showMessageDialog(owner, "Could not export the CSV file:\n" + problem, "Export CSV",
+                    JOptionPane.showMessageDialog(owner, "Could not save the file:\n" + problem, "Save",
                             JOptionPane.ERROR_MESSAGE);
                 }
             });
         });
     }
 
-    private static Path askSavePath(Window owner, String name) throws IOException, InterruptedException {
+    private static Path askSavePath(Window owner, String name, String extension, String description)
+            throws IOException, InterruptedException {
         String home = System.getProperty("user.home");
         if (onPath("kdialog")) {
-            Process p = new ProcessBuilder("kdialog", "--title", "Export CSV", "--getsavefilename",
-                    home + "/" + name, "*.csv|CSV files (*.csv)")
+            Process p = new ProcessBuilder("kdialog", "--title", "Save " + description, "--getsavefilename",
+                    home + "/" + name, "*." + extension + "|" + description + " (*." + extension + ")")
                     .redirectError(ProcessBuilder.Redirect.DISCARD).start();
             String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-            return p.waitFor() == 0 && !out.isEmpty() ? withCsvExtension(Path.of(out)) : null;
+            return p.waitFor() == 0 && !out.isEmpty() ? withExtension(Path.of(out), extension) : null;
         }
         String[] chosen = new String[1];
         try {
             SwingUtilities.invokeAndWait(() -> {
-                FileDialog d = new FileDialog((Frame) owner, "Export CSV", FileDialog.SAVE);
+                FileDialog d = new FileDialog((Frame) owner, "Save " + description, FileDialog.SAVE);
                 d.setDirectory(home);
                 d.setFile(name);
                 d.setVisible(true);
@@ -367,12 +377,12 @@ public final class Ui {
         } catch (java.lang.reflect.InvocationTargetException e) {
             throw new IOException(e.getCause());
         }
-        return chosen[0] == null ? null : withCsvExtension(Path.of(chosen[0]));
+        return chosen[0] == null ? null : withExtension(Path.of(chosen[0]), extension);
     }
 
-    private static Path withCsvExtension(Path p) {
+    private static Path withExtension(Path p, String extension) {
         String n = p.getFileName().toString();
-        return n.toLowerCase(Locale.ROOT).endsWith(".csv") ? p : p.resolveSibling(n + ".csv");
+        return n.toLowerCase(Locale.ROOT).endsWith("." + extension) ? p : p.resolveSibling(n + "." + extension);
     }
 
     private static boolean onPath(String command) {
@@ -570,7 +580,9 @@ public final class Ui {
             super.installDefaults(b);
             b.setOpaque(false);
             b.setRolloverEnabled(true);
-            b.setBorder(new BorderUIResource.EmptyBorderUIResource(7, 16, 7, 16));
+            boolean compact = Boolean.TRUE.equals(b.getClientProperty("compact"));
+            b.setBorder(compact ? new BorderUIResource.EmptyBorderUIResource(4, 10, 4, 10)
+                    : new BorderUIResource.EmptyBorderUIResource(7, 16, 7, 16));
         }
 
         @Override public void paint(Graphics g, JComponent c) {

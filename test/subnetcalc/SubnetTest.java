@@ -69,6 +69,7 @@ public final class SubnetTest {
         csv();
         cidr();
         keyBindings();
+        ios();
 
         if (failures > 0) {
             System.err.println(failures + " of " + checks + " checks failed");
@@ -188,6 +189,114 @@ public final class SubnetTest {
                 .getInputMap(javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(javax.swing.KeyStroke.getKeyStroke("DOWN"))));
     }
 
+    private static void ios() {
+        Vlsm.Plan office = Vlsm.plan(Subnet.parse("192.168.10.0/24"),
+                Vlsm.parse("Sales 60\nEngineering 28\nGuest Wi-Fi 12\nManagement 5\nWAN link 2"), false);
+
+        IosConfig.Result r = IosConfig.generate(office, new IosConfig.Options());
+        eq("ios defaults generate a switch", true, r.switchConfig() != null);
+        has("ios subinterface", r.router(), "interface GigabitEthernet0/0.10\n description SALES\n encapsulation dot1Q 10\n"
+                + " ip address 192.168.10.1 255.255.255.192\n");
+        has("ios link on next port", r.router(), "interface GigabitEthernet0/1\n description WAN link\n ip address 192.168.10.121 255.255.255.252\n");
+        has("ios dhcp exclusion", r.router(), "ip dhcp excluded-address 192.168.10.65\n");
+        has("ios dhcp pool", r.router(), "ip dhcp pool GUEST_WI_FI\n network 192.168.10.96 255.255.255.240\n default-router 192.168.10.97\n");
+        has("ios wrapped", r.router(), "enable\nconfigure terminal\n");
+        has("ios saved", r.router(), "end\nwrite memory\n");
+        missing("ios no NAT without uplink", r.router(), "ip nat");
+        has("ios trunk", r.switchConfig(), "interface GigabitEthernet0/1\n description Trunk to R1\n switchport mode trunk\n");
+        has("ios access range", r.switchConfig(), "interface range FastEthernet0/3 - 4\n description ENGINEERING\n switchport mode access\n"
+                + " switchport access vlan 20\n");
+
+        IosConfig.Options o = new IosConfig.Options();
+        o.ospf = true;
+        o.routerId = "1.1.1.1";
+        o.uplink = true;
+        o.reserved = 5;
+        o.staticNat = "192.168.10.10 203.0.113.5\ntcp 192.168.10.20 443 203.0.113.2 443";
+        o.staticRoutes = "10.99.0.0/16 192.168.10.122";
+        r = IosConfig.generate(office, o);
+        has("ios ospf wildcard", r.router(), " network 192.168.10.96 0.0.0.15 area 0\n");
+        has("ios passive", r.router(), " passive-interface GigabitEthernet0/0.40\n");
+        has("ios default originate", r.router(), " default-information originate\nip route 0.0.0.0 0.0.0.0 203.0.113.1\n");
+        has("ios router id", r.router(), " router-id 1.1.1.1\n");
+        has("ios static route", r.router(), "ip route 10.99.0.0 255.255.0.0 192.168.10.122\n");
+        has("ios pat", r.router(), "access-list 1 permit 192.168.10.0 0.0.0.255\nip nat inside source list 1 interface GigabitEthernet0/2 overload\n");
+        has("ios static nat", r.router(), "ip nat inside source static 192.168.10.10 203.0.113.5\n");
+        has("ios port forward", r.router(), "ip nat inside source static tcp 192.168.10.20 443 203.0.113.2 443\n");
+        has("ios reserved range", r.router(), "ip dhcp excluded-address 192.168.10.66 192.168.10.70\n");
+        has("ios full pool skipped", r.router(), "! No DHCP pool for MANAGEMENT");
+        missing("ios uplink not in ospf", r.router(), "network 203.0.113.0");
+
+        o = new IosConfig.Options();
+        o.uplink = true;
+        o.nat = IosConfig.Nat.POOL;
+        o.poolOverload = false;
+        o.interfaceType = "FastEthernet";
+        o.threeLevelNumbering = true;
+        r = IosConfig.generate(office, o);
+        has("ios pool", r.router(), "ip nat pool PUBLIC 203.0.113.10 203.0.113.20 netmask 255.255.255.0\n"
+                + "ip nat inside source list 1 pool PUBLIC\n");
+        has("ios fa 0/0/0", r.router(), "interface FastEthernet0/0/0\n");
+
+        o = new IosConfig.Options();
+        o.design = IosConfig.Design.LAYER3_SWITCH;
+        r = IosConfig.generate(office, o);
+        has("ios l3 ip routing", r.switchConfig(), "ip routing\n");
+        has("ios l3 svi", r.switchConfig(), "interface Vlan10\n description SALES\n ip address 192.168.10.1 255.255.255.192\n");
+        has("ios l3 routed uplink", r.switchConfig(), " no switchport\n ip address 192.168.10.122 255.255.255.252\n");
+        has("ios l3 switch default", r.switchConfig(), "ip route 0.0.0.0 0.0.0.0 192.168.10.121\n");
+        has("ios l3 router back route", r.router(), "ip route 192.168.10.0 255.255.255.192 192.168.10.122\n");
+        has("ios l3 dhcp on switch", r.switchConfig(), "ip dhcp pool SALES\n");
+        missing("ios l3 no dhcp on router", r.router(), "ip dhcp");
+
+        o = new IosConfig.Options();
+        o.design = IosConfig.Design.PORT_PER_SUBNET;
+        o.gatewayLast = true;
+        o.linkInterface = "Serial0/1/0";
+        r = IosConfig.generate(Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("A 50\nB 20\nTo R2 2\nTo R3 2"), false), o);
+        eq("ios per-port has no switch", null, r.switchConfig());
+        has("ios last usable gateway", r.router(), "interface GigabitEthernet0/1\n description B\n ip address 10.0.0.94 255.255.255.224\n");
+        has("ios serial numbering", r.router(), "interface Serial0/1/1\n description To R3\n ip address 10.0.0.101 255.255.255.252\n");
+
+        eq("ios name", "GUEST_WI_FI", IosConfig.name("Guest Wi-Fi!", "X"));
+        String[][] bad = {
+            {"routerName", "R 1"}, {"uplinkAddress", "203.0.113.2"}, {"staticNat", "tcp 1.2.3.4 99999 5.6.7.8 80"},
+            {"vlanStart", "1002"}, {"staticRoutes", "10.0.0.0/8 nowhere"}, {"design", "LAYER3_NO_LINK"}};
+        for (String[] b : bad) {
+            o = new IosConfig.Options();
+            o.uplink = true;
+            Vlsm.Plan plan = office;
+            switch (b[0]) {
+                case "routerName" -> o.routerName = b[1];
+                case "uplinkAddress" -> o.uplinkAddress = b[1];
+                case "staticNat" -> o.staticNat = b[1];
+                case "vlanStart" -> o.vlanStart = Integer.parseInt(b[1]);
+                case "staticRoutes" -> o.staticRoutes = b[1];
+                default -> {
+                    o.design = IosConfig.Design.LAYER3_SWITCH;
+                    plan = Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("A 50"), false);
+                }
+            }
+            checks++;
+            try {
+                IosConfig.generate(plan, o);
+                fail("ios should reject " + b[0] + " = " + b[1]);
+            } catch (IllegalArgumentException expected) {
+                // rejected with a message for the user
+            }
+        }
+    }
+
+    private static void has(String name, String text, String part) {
+        checks++;
+        if (!text.contains(part)) fail(name + ": missing\n" + part + "\nin\n" + text);
+    }
+
+    private static void missing(String name, String text, String part) {
+        checks++;
+        if (text.contains(part)) fail(name + ": should not contain " + part);
+    }
+
     private static String block(Subnet s) { return format(s.network()) + "/" + s.prefix(); }
 
     private static String blocks(java.util.List<Subnet> list) {
@@ -196,7 +305,7 @@ public final class SubnetTest {
 
     private static void eq(String name, Object want, Object got) {
         checks++;
-        if (!want.equals(got)) fail(name + ": expected " + want + " but got " + got);
+        if (!java.util.Objects.equals(want, got)) fail(name + ": expected " + want + " but got " + got);
     }
 
     private static void fail(String message) {

@@ -4,6 +4,31 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-14
+
+### Added
+- **IOS config page** (fourth tab, Ctrl+4): generates Cisco IOS router and switch configurations
+  from the VLSM plan, updating live, ready to paste into Packet Tracer or a real device.
+  - LAN design: router on a stick (802.1Q subinterfaces, switch VLANs, access ports, trunk),
+    one router port per subnet, or a layer 3 switch (SVIs, `ip routing`, routed link to the router).
+  - Port type FastEthernet or GigabitEthernet, `0/0` or `0/0/0` numbering, gateway on the first or
+    last usable address, and 1–2 host subnets as point-to-point links on automatic or named
+    interfaces (e.g. `Serial0/1/0`, numbered upward).
+  - VLAN first ID and step, native VLAN, access ports per VLAN, access port prefix, uplink port.
+  - DHCP pools with the gateway excluded, DNS server, domain name and addresses kept for static devices.
+  - OSPF (process, area, router ID, wildcard-mask networks, passive LAN interfaces, default route
+    origination), automatic static routes for the layer 3 design without OSPF, and extra static routes.
+  - Internet uplink (static or DHCP) with a default route, and NAT: PAT on the uplink, an address
+    pool with or without overload, static NAT and TCP/UDP port forwards.
+  - Output options: `enable` … `write memory` wrapper, lab extras, section comments.
+  - Copy or save (`.txt`) each device's config; all options are remembered between runs.
+- Tests for the config generator across all three designs, NAT modes and invalid input
+  (150 checks, up from 110).
+
+### Changed
+- The save dialog is shared between CSV export and config files.
+- Default window size is 1100 × 820 to fit the fourth tab and the config page.
+
 ## [1.2.1] - 2026-11-14
 
 ### Fixed
@@ -79,6 +104,7 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.3.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.0.0...v1.1.0

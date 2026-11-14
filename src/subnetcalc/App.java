@@ -26,7 +26,7 @@ public final class App {
     /** From the jar manifest (see build.sh); "dev" when run from unpackaged classes. */
     static final String VERSION = App.class.getPackage().getImplementationVersion() != null
             ? App.class.getPackage().getImplementationVersion() : "dev";
-    private static final String[] PAGE_KEYS = {"calculator", "vlsm", "tools"};
+    private static final String[] PAGE_KEYS = {"calculator", "vlsm", "tools", "config"};
 
     final JFrame frame = new JFrame("Subnet Calculator");
     private final Preferences prefs;
@@ -51,12 +51,13 @@ public final class App {
     App(Preferences prefs) {
         this.prefs = prefs;
         mode = initialMode(prefs);
-        pages = List.of(new CalculatorView(prefs), new VlsmView(prefs), new ToolsView(prefs));
+        VlsmView vlsm = new VlsmView(prefs);
+        pages = List.of(new CalculatorView(prefs), vlsm, new ToolsView(prefs), new ConfigView(prefs, vlsm, () -> tabs[1].doClick()));
 
         CardLayout cards = new CardLayout();
         JPanel content = new JPanel(cards);
         ButtonGroup group = new ButtonGroup();
-        String[] names = {"Calculator", "VLSM planner", "Route tools"};
+        String[] names = {"Calculator", "VLSM planner", "Route tools", "IOS config"};
         for (int i = 0; i < pages.size(); i++) {
             int index = i;
             content.add(pages.get(i).root(), PAGE_KEYS[i]);
@@ -82,7 +83,7 @@ public final class App {
                 on -> setMode(on ? "dark" : "light"));
         dark.setEnabled(!mode.equals("system"));
         JPanel header = new JPanel(new BorderLayout());
-        header.add(Ui.row(title, Ui.dim(VERSION), Box.createHorizontalStrut(12), tabs[0], tabs[1], tabs[2]), BorderLayout.WEST);
+        header.add(Ui.row(title, Ui.dim(VERSION), Box.createHorizontalStrut(12), tabs[0], tabs[1], tabs[2], tabs[3]), BorderLayout.WEST);
         header.add(Ui.row(matchSystem.label("Match system"), matchSystem, Box.createHorizontalStrut(10),
                 dark.label("Dark mode"), dark), BorderLayout.EAST);
         header.setBorder(new EmptyBorder(0, 0, 14, 0));
@@ -104,8 +105,8 @@ public final class App {
         frame.setContentPane(root);
         frame.setIconImages(Ui.icons());
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setMinimumSize(new Dimension(800, 660));
-        frame.setSize(1000, 800);
+        frame.setMinimumSize(new Dimension(900, 680));
+        frame.setSize(1100, 820);
         frame.setLocationRelativeTo(null);
     }
 

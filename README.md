@@ -1,6 +1,7 @@
 # Subnet Calculator
 
-A fast IPv4 subnet calculator, VLSM planner and route-summarization tool for the Linux desktop,
+A fast IPv4 subnet calculator, VLSM planner, route-summarization tool and Cisco IOS config
+generator for the Linux desktop,
 written in plain Java with **no dependencies**. It reads your KDE colour scheme and accent colour so it looks at home on Plasma
 (Breeze), and has a dark / light mode switch.
 
@@ -9,8 +10,9 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Calculator | ![Calculator, dark](docs/calculator-dark.png) | ![Calculator, light](docs/calculator-light.png) |
 | VLSM planner | ![VLSM planner, dark](docs/vlsm-dark.png) | ![VLSM planner, light](docs/vlsm-light.png) |
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
+| IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.2.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.3.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -42,6 +44,27 @@ Current version: **1.2.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in
 - **Range to CIDR:** enter a first and last address to get the fewest CIDR blocks that cover exactly
   that range.
 
+### IOS config generator
+Turns the plan on the VLSM planner page into router and switch configurations you can paste into
+Packet Tracer or a real device. It updates live as you change the plan or the options, and the
+options are remembered.
+- **LAN designs:** router on a stick (802.1Q subinterfaces plus switch VLANs, access ports and a
+  trunk), one router port per subnet, or a layer 3 switch (SVIs with `ip routing` and a routed link
+  to the router over a 2-host subnet in the plan).
+- **Interfaces:** FastEthernet or GigabitEthernet, `0/0` or `0/0/0` numbering, gateway on the first
+  or last usable address. Subnets with 1–2 hosts can become point-to-point links on the next free
+  port or a named interface such as `Serial0/1/0`.
+- **VLANs:** first ID and step, native VLAN, access ports per VLAN, access port prefix and the uplink port.
+- **DHCP:** a pool per LAN with the gateway excluded, plus DNS server, domain name and a number of
+  addresses kept free for static devices.
+- **Routing:** OSPF with wildcard-mask network statements, process ID, area, router ID, passive LAN
+  interfaces and `default-information originate`; or static routes when OSPF is off; plus your own
+  extra static routes.
+- **Internet uplink and NAT:** static or DHCP address with a default route; NAT off, PAT on the
+  uplink, or an address pool (with or without overload); static NAT and port forwards.
+- **Output:** optional `enable` / `configure terminal` … `write memory` wrapper, lab extras
+  (`no ip domain-lookup`, `logging synchronous`) and section comments. Copy or save each device's config.
+
 ### Everywhere
 - **Copy table** puts any table on the clipboard as tab-separated text, which pastes straight into
   spreadsheet cells (up to 100,000 rows; use Export CSV for more).
@@ -59,9 +82,9 @@ Current version: **1.2.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in
 | Keys | Action |
 |---|---|
 | Ctrl+L | Jump to the page's main input |
-| Ctrl+Shift+C | Copy results (Calculator) or the table (other pages) |
+| Ctrl+Shift+C | Copy results (Calculator), the table (VLSM, Route tools) or the config (IOS config) |
 | Ctrl+D | Toggle dark / light (turns off Match system) |
-| Ctrl+1 / 2 / 3 | Calculator / VLSM planner / Route tools |
+| Ctrl+1 / 2 / 3 / 4 | Calculator / VLSM planner / Route tools / IOS config |
 | Down arrow | Recent networks, in a network field |
 
 ## Requirements
@@ -84,10 +107,10 @@ Remove it with `./install.sh --uninstall`.
 ## Design notes
 
 - `Subnet` holds the address arithmetic (all on a 32-bit `int`), `Vlsm` the planner, `Cidr` range
-  splitting and summarization, and `Csv` the export. `Theme` reads colours from `~/.config/kdeglobals`
+  splitting and summarization, `IosConfig` the Cisco config generator, and `Csv` the export. `Theme` reads colours from `~/.config/kdeglobals`
   with Breeze fallbacks and watches it with inotify for live changes. `Ui` is a small flat look and
-  feel with the shared widgets, `History` the recent-networks list, and `CalculatorView`, `VlsmView`
-  and `ToolsView` are the three pages.
+  feel with the shared widgets, `History` the recent-networks list, and `CalculatorView`, `VlsmView`,
+  `ToolsView` and `ConfigView` are the four pages.
 - The jar is a few dozen KB. The launcher uses a small heap, the serial GC and an automatically
   created class-data-sharing archive, so later starts are quicker and memory use stays low.
 - Tests are a plain Java class (`test/subnetcalc/SubnetTest.java`) run by `build.sh`, with no test framework.
