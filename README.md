@@ -12,7 +12,7 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 | IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.3.3**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.3.4**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -96,22 +96,31 @@ that setting out of the config, and "auto" picks a value for you.
 | Ctrl+1 / 2 / 3 / 4 | Calculator / VLSM planner / Route tools / IOS config |
 | Down arrow | Recent networks, in a network field |
 
-## Requirements
+## Install
 
-- Java 25 JDK. On Fedora: `sudo dnf install java-25-openjdk-devel`
+Download the installer files from the latest [GitHub release](../../releases) (or build them, see
+below), put them in one folder and run:
 
-## Build and install
+```sh
+./install.sh              # Fedora/RHEL family: system-wide RPM; any other Linux: just for you
+./install.sh --user       # just for you, no password needed
+./install.sh --uninstall
+```
+
+The packages include their own trimmed Java runtime, so nothing else has to be installed. They need
+64-bit Linux with glibc 2.38 or newer (Fedora 39+, Ubuntu 24.04+, Debian 13+).
+
+## Build from source
+
+Needs a Java 25 JDK. On Fedora: `sudo dnf install java-25-openjdk-devel`
 
 ```sh
 ./build.sh      # compiles, runs the tests, writes build/subnet-calculator.jar
-./install.sh    # adds "Subnet Calculator" to the application menu and ~/.local/bin
+./install.sh    # developer install for the current user, using the system Java
+./package.sh    # builds the installers into dist/ (also needs java-25-openjdk-jmods and rpm-build)
 ```
 
-Run it from the menu, with `subnet-calculator`, or straight from the jar with
-`java -jar build/subnet-calculator.jar`. Ready-built jars are attached to each
-[GitHub release](../../releases).
-
-Remove it with `./install.sh --uninstall`.
+`./install.sh --uninstall` removes the developer install.
 
 ## Design notes
 
@@ -120,8 +129,14 @@ Remove it with `./install.sh --uninstall`.
   with Breeze fallbacks and watches it with inotify for live changes. `Ui` is a small flat look and
   feel with the shared widgets, `History` the recent-networks list, and `CalculatorView`, `VlsmView`,
   `ToolsView` and `ConfigView` are the four pages.
-- The jar is a few dozen KB. The launcher uses a small heap, the serial GC and an automatically
-  created class-data-sharing archive, so later starts are quicker and memory use stays low.
+- Pages are built the first time they are opened, and the config form only re-lays itself out when
+  a row actually appears or disappears.
+- Startup: the build records which classes a launch loads (`tools/subnetcalc/Training.java`, run
+  headless) and installing turns that list into a class-data-sharing archive in a separate short
+  Java run. With it the window opens about a third faster. The launcher also uses a small heap, the
+  serial GC and a quick-start JIT, so memory use stays low.
+- Packaging: `jlink` builds a runtime with only the three modules the app uses (about 59 MB); the
+  RPM installs it under `/opt` without exposing its private libraries as dependencies.
 - Tests are a plain Java class (`test/subnetcalc/SubnetTest.java`) run by `build.sh`, with no test framework.
 - The version lives in `VERSION` and is stamped into the jar manifest, which the app shows next to its title.
 

@@ -1,5 +1,6 @@
 package subnetcalc;
 
+import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
@@ -19,18 +20,23 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.Window;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -38,6 +44,7 @@ import java.util.function.Consumer;
 import javax.swing.AbstractButton;
 import javax.swing.Box;
 import javax.swing.ButtonModel;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -49,6 +56,7 @@ import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.ToolTipManager;
 import javax.swing.UIDefaults;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
@@ -69,6 +77,7 @@ import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.plaf.basic.BasicLookAndFeel;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.plaf.basic.BasicTextFieldUI;
+import javax.swing.plaf.metal.MetalLookAndFeel;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumnModel;
@@ -89,6 +98,13 @@ public final class Ui {
         } catch (UnsupportedLookAndFeelException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Hover help shows quickly and stays up long enough to read. */
+    static void installTooltipTiming() {
+        ToolTipManager t = ToolTipManager.sharedInstance();
+        t.setInitialDelay(250);
+        t.setDismissDelay(30_000);
     }
 
     // ---- small helpers -------------------------------------------------------------------------
@@ -261,7 +277,7 @@ public final class Ui {
         StringBuilder sb = new StringBuilder();
         tsv(sb, rows.csvHeader());
         for (int r = 0; r < n; r++) tsv(sb, rows.csvRow(r));
-        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(sb.toString()), null);
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(sb.toString()), null);
         flash(button, n < rows.getRowCount() ? String.format("Copied first %,d rows", n) : "Copied");
     }
 
@@ -374,7 +390,7 @@ public final class Ui {
                 d.setVisible(true);
                 if (d.getFile() != null) chosen[0] = d.getDirectory() + d.getFile();
             });
-        } catch (java.lang.reflect.InvocationTargetException e) {
+        } catch (InvocationTargetException e) {
             throw new IOException(e.getCause());
         }
         return chosen[0] == null ? null : withExtension(Path.of(chosen[0]), extension);
@@ -412,14 +428,22 @@ public final class Ui {
 
     /** Header cells aligned like the column below them. */
     static final class HeaderCells extends DefaultTableCellRenderer {
+        private static final Font BOLD = SANS.deriveFont(Font.BOLD);
+        private Theme borderTheme;
+        private CompoundBorder border;
+
         @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean selected, boolean focus, int row, int column) {
             super.getTableCellRendererComponent(t, v, false, false, row, column);
-            setFont(SANS.deriveFont(Font.BOLD));
+            if (borderTheme != theme) { // the border's colour follows the theme
+                borderTheme = theme;
+                border = new CompoundBorder(new MatteBorder(0, 0, 1, 0, theme.border()), new EmptyBorder(6, 10, 6, 10));
+            }
+            setFont(BOLD);
             setForeground(theme.dim());
             setBackground(theme.view());
             setHorizontalAlignment(((Rows) t.getModel()).numeric(t.convertColumnIndexToModel(column))
                     ? SwingConstants.RIGHT : SwingConstants.LEFT);
-            setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, theme.border()), new EmptyBorder(6, 10, 6, 10)));
+            setBorder(border);
             return this;
         }
     }
@@ -476,8 +500,8 @@ public final class Ui {
         private static final Map<Object, Object> KEY_BINDINGS = keyBindings();
 
         private static Map<Object, Object> keyBindings() {
-            Map<Object, Object> bindings = new java.util.HashMap<>();
-            UIDefaults metal = new javax.swing.plaf.metal.MetalLookAndFeel().getDefaults();
+            Map<Object, Object> bindings = new HashMap<>();
+            UIDefaults metal = new MetalLookAndFeel().getDefaults();
             for (Object key : metal.keySet().toArray()) {
                 if (key instanceof String s && (s.contains("InputMap") || s.endsWith("Bindings"))) bindings.put(key, metal.get(key));
             }
@@ -632,120 +656,6 @@ public final class Ui {
         }
     }
 
-    /** Small arrow that points down (open, or a dropdown) or right (closed). */
-    static final class Chevron implements javax.swing.Icon {
-        boolean down;
-
-        Chevron(boolean down) { this.down = down; }
-
-        @Override public int getIconWidth() { return 12; }
-        @Override public int getIconHeight() { return 12; }
-
-        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
-            Graphics2D g2 = smooth(g);
-            g2.setColor(theme.dim());
-            g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            java.awt.geom.Path2D p = new java.awt.geom.Path2D.Float();
-            if (down) {
-                p.moveTo(x + 2, y + 4);
-                p.lineTo(x + 6, y + 8);
-                p.lineTo(x + 10, y + 4);
-            } else {
-                p.moveTo(x + 4, y + 2);
-                p.lineTo(x + 8, y + 6);
-                p.lineTo(x + 4, y + 10);
-            }
-            g2.draw(p);
-            g2.dispose();
-        }
-    }
-
-    /** A check mark for the selected menu entry; an equal-sized blank keeps the others aligned. */
-    static final class Check implements javax.swing.Icon {
-        private final boolean on;
-
-        Check(boolean on) { this.on = on; }
-
-        @Override public int getIconWidth() { return 14; }
-        @Override public int getIconHeight() { return 14; }
-
-        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
-            if (!on) return;
-            Graphics2D g2 = smooth(g);
-            g2.setColor(theme.accent());
-            g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            java.awt.geom.Path2D p = new java.awt.geom.Path2D.Float();
-            p.moveTo(x + 2, y + 7);
-            p.lineTo(x + 6, y + 11);
-            p.lineTo(x + 12, y + 3);
-            g2.draw(p);
-            g2.dispose();
-        }
-    }
-
-    /**
-     * A small circled "?" that shows a setting's description and an example when hovered.
-     * Tooltips stay up long enough to read (see {@link #installTooltipTiming()}).
-     */
-    static final class HelpIcon extends JComponent {
-        HelpIcon(Help.Entry entry) {
-            setEntry(entry);
-            setFocusable(false);
-        }
-
-        void setEntry(Help.Entry entry) {
-            setToolTipText(entry == null ? null : tooltip(entry));
-            setVisible(entry != null);
-        }
-
-        private static String tooltip(Help.Entry e) {
-            return "<html><div style='width:260px'>" + escape(e.text())
-                    + "<br><br><b>Example:</b><br><code>" + escape(e.example()).replace("\n", "<br>") + "</code></div></html>";
-        }
-
-        private static String escape(String s) {
-            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-        }
-
-        @Override public Dimension getPreferredSize() { return new Dimension(15, 15); }
-        @Override public Dimension getMinimumSize() { return getPreferredSize(); }
-
-        @Override protected void paintComponent(Graphics g) {
-            Graphics2D g2 = smooth(g);
-            g2.setColor(theme.dim());
-            g2.setStroke(new BasicStroke(1.2f));
-            g2.draw(new java.awt.geom.Ellipse2D.Float(1, 1, 13, 13));
-            g2.setFont(SANS.deriveFont(Font.BOLD, 10f));
-            FontMetrics fm = g2.getFontMetrics();
-            g2.drawString("?", (15 - fm.stringWidth("?")) / 2f, (15 - fm.getHeight()) / 2f + fm.getAscent());
-            g2.dispose();
-        }
-    }
-
-    /** {@code label} followed by its help icon, when {@link Help} has an entry for it. */
-    static JComponent withHelp(JLabel label, String section) {
-        Help.Entry entry = Help.find(section, label.getText());
-        if (entry == null) return label;
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        p.add(label);
-        p.add(Box.createHorizontalStrut(5));
-        p.add(new HelpIcon(entry));
-        return p;
-    }
-
-    /** The help icon inside a {@link #withHelp} box, if any. */
-    static HelpIcon helpIn(JComponent box) {
-        for (Component c : box.getComponents()) if (c instanceof HelpIcon h) return h;
-        return null;
-    }
-
-    /** Hover help shows quickly and stays up long enough to read. */
-    static void installTooltipTiming() {
-        javax.swing.ToolTipManager t = javax.swing.ToolTipManager.sharedInstance();
-        t.setInitialDelay(250);
-        t.setDismissDelay(30_000);
-    }
-
     // ---- custom components ---------------------------------------------------------------------
 
     /** Breeze-style on/off switch. */
@@ -775,12 +685,6 @@ public final class Ui {
 
         boolean isOn() { return on; }
 
-        /** Changes the state without running the action, e.g. to mirror a setting changed elsewhere. */
-        void setOn(boolean on) {
-            this.on = on;
-            repaint();
-        }
-
         void toggle() {
             if (!isEnabled()) return;
             on = !on;
@@ -808,7 +712,7 @@ public final class Ui {
 
         @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = smooth(g);
-            if (!isEnabled()) g2.setComposite(java.awt.AlphaComposite.SrcOver.derive(.45f));
+            if (!isEnabled()) g2.setComposite(AlphaComposite.SrcOver.derive(.45f));
             int w = getWidth(), h = getHeight(), d = h - 6;
             g2.setColor(on ? theme.accent() : Theme.mix(theme.window(), theme.fg(), .3f));
             g2.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
@@ -868,5 +772,112 @@ public final class Ui {
             }
             g2.dispose();
         }
+    }
+
+    /** Small arrow that points down (open, or a dropdown) or right (closed). */
+    static final class Chevron implements Icon {
+        boolean down;
+
+        Chevron(boolean down) { this.down = down; }
+
+        @Override public int getIconWidth() { return 12; }
+        @Override public int getIconHeight() { return 12; }
+
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.dim());
+            g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            Path2D p = new Path2D.Float();
+            if (down) {
+                p.moveTo(x + 2, y + 4);
+                p.lineTo(x + 6, y + 8);
+                p.lineTo(x + 10, y + 4);
+            } else {
+                p.moveTo(x + 4, y + 2);
+                p.lineTo(x + 8, y + 6);
+                p.lineTo(x + 4, y + 10);
+            }
+            g2.draw(p);
+            g2.dispose();
+        }
+    }
+
+    /** A check mark for the selected menu entry; an equal-sized blank keeps the others aligned. */
+    static final class Check implements Icon {
+        private final boolean on;
+
+        Check(boolean on) { this.on = on; }
+
+        @Override public int getIconWidth() { return 14; }
+        @Override public int getIconHeight() { return 14; }
+
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            if (!on) return;
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.accent());
+            g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            Path2D p = new Path2D.Float();
+            p.moveTo(x + 2, y + 7);
+            p.lineTo(x + 6, y + 11);
+            p.lineTo(x + 12, y + 3);
+            g2.draw(p);
+            g2.dispose();
+        }
+    }
+
+    /**
+     * A small circled "?" that shows a setting's description and an example when hovered.
+     * Tooltips stay up long enough to read (see {@link #installTooltipTiming()}).
+     */
+    static final class HelpIcon extends JComponent {
+        HelpIcon(Help.Entry entry) {
+            setEntry(entry);
+            setFocusable(false);
+        }
+
+        void setEntry(Help.Entry entry) {
+            setToolTipText(entry == null ? null : tooltip(entry));
+            setVisible(entry != null);
+        }
+
+        private static String tooltip(Help.Entry e) {
+            return "<html><div style='width:260px'>" + escape(e.text())
+                    + "<br><br><b>Example:</b><br><code>" + escape(e.example()).replace("\n", "<br>") + "</code></div></html>";
+        }
+
+        private static String escape(String s) {
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        }
+
+        @Override public Dimension getPreferredSize() { return new Dimension(15, 15); }
+        @Override public Dimension getMinimumSize() { return getPreferredSize(); }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.dim());
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.draw(new Ellipse2D.Float(1, 1, 13, 13));
+            g2.setFont(SANS.deriveFont(Font.BOLD, 10f));
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString("?", (15 - fm.stringWidth("?")) / 2f, (15 - fm.getHeight()) / 2f + fm.getAscent());
+            g2.dispose();
+        }
+    }
+
+    /** {@code label} followed by its help icon, when {@link Help} has an entry for it. */
+    static JComponent withHelp(JLabel label, String section) {
+        Help.Entry entry = Help.find(section, label.getText());
+        if (entry == null) return label;
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        p.add(label);
+        p.add(Box.createHorizontalStrut(5));
+        p.add(new HelpIcon(entry));
+        return p;
+    }
+
+    /** The help icon inside a {@link #withHelp} box, if any. */
+    static HelpIcon helpIn(JComponent box) {
+        for (Component c : box.getComponents()) if (c instanceof HelpIcon h) return h;
+        return null;
     }
 }

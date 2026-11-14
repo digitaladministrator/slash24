@@ -18,17 +18,24 @@ fi
 
 [[ -f build/$APP.jar ]] || ./build.sh
 install -Dm644 "build/$APP.jar" "$DATA/$APP/$APP.jar"
-rm -f "$CACHE/app.jsa"   # the startup cache belongs to the previous jar
+install -Dm644 "build/$APP.classlist" "$DATA/$APP/$APP.classlist"
+rm -rf "$CACHE" # 1.0–1.3.3 kept an automatically created startup cache here
+
+# Build the startup cache (class-data-sharing archive) once, now, in a separate short Java run.
+# If the system Java is updated later the archive no longer matches and Java simply ignores it;
+# running this script again rebuilds it.
+java -Xshare:dump -XX:SharedClassListFile="$DATA/$APP/$APP.classlist" \
+    -XX:SharedArchiveFile="$DATA/$APP/$APP.jsa" -cp "$DATA/$APP/$APP.jar" >/dev/null 2>&1 \
+    || echo "Note: the startup cache could not be built; the app still works, it just starts a little slower."
 install -Dm644 "packaging/$APP.svg" "$DATA/$APP/$APP.svg"
 mkdir -p "$BIN" "$DATA/applications"
 
-# Small heap, serial GC and C1-only JIT keep the footprint low; the class-data-sharing archive
-# is created on first run and makes every later start faster.
+# Small heap, serial GC and a quick-start JIT keep the footprint low; the archive built above
+# speeds up class loading (Java falls back silently if it is missing or out of date).
 cat > "$BIN/$APP" <<LAUNCHER
 #!/bin/sh
-mkdir -p "$CACHE"
 exec java -Xms8m -Xmx128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 \\
-    -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile="$CACHE/app.jsa" \\
+    -Xshare:auto -XX:SharedArchiveFile="$DATA/$APP/$APP.jsa" -Xlog:cds=off -Xlog:cds+dynamic=off \\
     -Dawt.useSystemAAFontSettings=on -jar "$DATA/$APP/$APP.jar" "\$@"
 LAUNCHER
 chmod 755 "$BIN/$APP"

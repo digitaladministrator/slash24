@@ -39,8 +39,6 @@ final class History {
 
     void cancel() { settle.stop(); }
 
-    List<String> items() { return List.copyOf(items); }
-
     void add(String text) {
         if (text == null || text.isBlank()) return;
         items.remove(text);

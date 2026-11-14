@@ -9,6 +9,7 @@ import static subnetcalc.Ui.wide;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
@@ -35,7 +36,7 @@ final class VlsmView implements Page {
     private final History history;
     private final JButton export = new JButton("Export CSV…");
     private final JButton copyTable = new JButton("Copy table");
-    private final List<Runnable> planListeners = new java.util.ArrayList<>();
+    private final List<Runnable> planListeners = new ArrayList<>();
     private Vlsm.Plan plan;
 
     VlsmView(Preferences prefs) {

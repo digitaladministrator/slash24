@@ -4,6 +4,30 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.4] - 2026-11-14
+
+### Added
+- **Installers for new systems** (`./package.sh`): an RPM for Fedora/RHEL-family systems and a
+  portable package for any Linux, both with their own trimmed Java runtime (no Java needed on the
+  target), plus an `install.sh` that picks the right one, verifies checksums, and can install just
+  for the current user or uninstall. Tested on a clean Fedora 44 system with no Java installed.
+- `subnet-calculator --version` prints the version without opening a window.
+
+### Fixed
+- **Possible crash on the first launch after installing or updating.** The launcher let Java record
+  its startup cache while the app was running (`-XX:+AutoCreateSharedArchive`), which can crash
+  Fedora's Java 25 inside its lambda handling. The class list is now recorded at build time and the
+  cache is built at install time in a separate short Java run that never starts the app.
+- Config output no longer contains empty sections (a `!` and heading with nothing under it).
+
+### Changed
+- **Faster and leaner:** pages are built when first opened; the IOS config form only re-lays itself
+  out when a row appears or disappears instead of on every keystroke; table headers reuse their font
+  and border; CSV export reuses one buffer. The window opens about a third faster with the startup
+  cache, and memory use dropped from about 77 MB to about 73 MB.
+- Code clean-up: removed unused code, replaced inline fully qualified names with imports, grouped
+  related classes, and tidied import order.
+
 ## [1.3.3] - 2026-11-14
 
 ### Added
@@ -165,6 +189,7 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.3.4]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.0...v1.3.1

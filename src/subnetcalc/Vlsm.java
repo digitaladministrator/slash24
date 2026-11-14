@@ -70,9 +70,6 @@ final class Vlsm {
             allocations.add(new Allocation(n, new Subnet((int) cursor, p)));
             cursor += 1L << (32 - p);
         }
-        return new Plan(network, List.copyOf(allocations), free(cursor, start + network.total()), cursor - start);
+        return new Plan(network, List.copyOf(allocations), Cidr.range(cursor, start + network.total()), cursor - start);
     }
-
-    /** The unused range {@code [from, to)} as the fewest CIDR blocks. */
-    static List<Subnet> free(long from, long to) { return Cidr.range(from, to); }
 }

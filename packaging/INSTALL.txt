@@ -1,0 +1,44 @@
+Subnet Calculator @VERSION@ - installer
+======================================
+
+An IPv4 subnet calculator, VLSM planner, route-summary tool and Cisco IOS config generator.
+It includes its own Java runtime, so nothing else needs to be installed first.
+
+Install
+-------
+Open a terminal in this folder and run:
+
+    ./install.sh
+
+  * On Fedora, RHEL, Rocky, Alma and other dnf-based systems this installs the RPM for all
+    users (you will be asked for your password).
+  * On any other Linux it installs just for you, with no password needed.
+
+Other choices:
+
+    ./install.sh --user       install just for you on any Linux (no password)
+    ./install.sh --system     install the RPM for all users (dnf-based systems)
+    ./install.sh --uninstall  remove it again
+
+Then open "Subnet Calculator" from the application menu, or run: subnet-calculator
+
+Requirements
+------------
+  * 64-bit Linux on Intel/AMD (x86_64)
+  * glibc 2.38 or newer: Fedora 39+, RHEL/Rocky/Alma 10+, Ubuntu 24.04+, Debian 13+
+  * A graphical desktop (X11 or Wayland with XWayland)
+  * Optional: the Noto Sans and Noto Sans Mono fonts for the intended look
+
+What is in this folder
+----------------------
+  install.sh                                    the installer
+  subnet-calculator-@VERSION@-1.*.x86_64.rpm      system-wide package for dnf-based systems
+  subnet-calculator-@VERSION@-linux-x64.tar.gz    portable package for any Linux; it contains its
+                                                own install.sh for a per-user install
+  SHA256SUMS                                    checksums; install.sh verifies them
+  LICENSE                                       MIT licence
+
+Where it goes
+-------------
+  RPM:       /opt/subnet-calculator, plus a menu entry and /usr/bin/subnet-calculator
+  Per user:  ~/.local/share/subnet-calculator, plus a menu entry and ~/.local/bin/subnet-calculator

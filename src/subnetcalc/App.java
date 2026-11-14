@@ -11,16 +11,16 @@ import javax.swing.AbstractAction;
 import javax.swing.Box;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
-import javax.swing.JMenuItem;
-import javax.swing.JPopupMenu;
-import javax.swing.SwingConstants;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JRootPane;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
@@ -31,19 +31,27 @@ public final class App {
     static final String VERSION = App.class.getPackage().getImplementationVersion() != null
             ? App.class.getPackage().getImplementationVersion() : "dev";
     private static final String[] PAGE_KEYS = {"calculator", "vlsm", "tools", "config"};
+    private static final String[] PAGE_NAMES = {"Calculator", "VLSM planner", "Route tools", "IOS config"};
+    private static final String[] MODES = {"system", "light", "dark"};
+    private static final String[] MODE_NAMES = {"Match system", "Light", "Dark"};
 
     final JFrame frame = new JFrame("Subnet Calculator");
     private final Preferences prefs;
-    private final List<Page> pages;
+    /** Pages are built the first time they are shown, which keeps startup short. */
+    private final Page[] pages = new Page[PAGE_KEYS.length];
     private final JToggleButton[] tabs = new JToggleButton[PAGE_KEYS.length];
-    private static final String[] MODES = {"system", "light", "dark"};
-    private static final String[] MODE_NAMES = {"Match system", "Light", "Dark"};
+    private final CardLayout cards = new CardLayout();
+    private final JPanel content = new JPanel(cards);
     private final JButton theme = new JButton();
     private int page;
     /** "system", "dark" or "light". */
     private String mode;
 
     public static void main(String[] args) {
+        if (List.of(args).contains("--version")) {
+            System.out.println("Subnet Calculator " + VERSION);
+            return;
+        }
         Preferences prefs = Preferences.userNodeForPackage(App.class);
         Ui.theme = Theme.of(darkFor(initialMode(prefs)));
         SwingUtilities.invokeLater(() -> {
@@ -58,28 +66,21 @@ public final class App {
     App(Preferences prefs) {
         this.prefs = prefs;
         mode = initialMode(prefs);
-        VlsmView vlsm = new VlsmView(prefs);
-        pages = List.of(new CalculatorView(prefs), vlsm, new ToolsView(prefs), new ConfigView(prefs, vlsm, () -> tabs[1].doClick()));
 
-        CardLayout cards = new CardLayout();
-        JPanel content = new JPanel(cards);
         ButtonGroup group = new ButtonGroup();
-        String[] names = {"Calculator", "VLSM planner", "Route tools", "IOS config"};
-        for (int i = 0; i < pages.size(); i++) {
+        for (int i = 0; i < PAGE_KEYS.length; i++) {
             int index = i;
-            content.add(pages.get(i).root(), PAGE_KEYS[i]);
-            tabs[i] = new JToggleButton(names[i]);
+            tabs[i] = new JToggleButton(PAGE_NAMES[i]);
             tabs[i].setToolTipText("Ctrl+" + (i + 1));
             group.add(tabs[i]);
             tabs[i].addActionListener(e -> {
-                page = index;
-                cards.show(content, PAGE_KEYS[index]);
+                showPage(index);
                 prefs.put("page", PAGE_KEYS[index]);
             });
         }
-        page = Math.max(0, List.of(PAGE_KEYS).indexOf(prefs.get("page", "calculator")));
-        tabs[page].setSelected(true);
-        cards.show(content, PAGE_KEYS[page]);
+        int start = Math.max(0, List.of(PAGE_KEYS).indexOf(prefs.get("page", "calculator")));
+        tabs[start].setSelected(true);
+        showPage(start);
 
         JLabel title = new JLabel("Subnet Calculator");
         title.setFont(Ui.SANS.deriveFont(Font.BOLD, 18f));
@@ -100,8 +101,8 @@ public final class App {
         root.add(content, BorderLayout.CENTER);
 
         JRootPane rootPane = frame.getRootPane();
-        bind(rootPane, "ctrl L", () -> pages.get(page).focusInput());
-        bind(rootPane, "ctrl shift C", () -> pages.get(page).copy());
+        bind(rootPane, "ctrl L", () -> page(page).focusInput());
+        bind(rootPane, "ctrl shift C", () -> page(page).copy());
         bind(rootPane, "ctrl D", () -> setMode(Ui.theme.dark() ? "light" : "dark"));
         for (int i = 0; i < tabs.length; i++) {
             JToggleButton tab = tabs[i];
@@ -114,6 +115,26 @@ public final class App {
         frame.setMinimumSize(new Dimension(900, 680));
         frame.setSize(1100, 820);
         frame.setLocationRelativeTo(null);
+    }
+
+    private void showPage(int index) {
+        page = index;
+        page(index);
+        cards.show(content, PAGE_KEYS[index]);
+    }
+
+    /** The page at {@code index}, built and added to the window on first use. */
+    private Page page(int index) {
+        if (pages[index] == null) {
+            pages[index] = switch (index) {
+                case 0 -> new CalculatorView(prefs);
+                case 1 -> new VlsmView(prefs);
+                case 2 -> new ToolsView(prefs);
+                default -> new ConfigView(prefs, (VlsmView) page(1), () -> tabs[1].doClick()); // uses the VLSM plan
+            };
+            content.add(pages[index].root(), PAGE_KEYS[index]);
+        }
+        return pages[index];
     }
 
     private void updateThemeButton() {
@@ -158,7 +179,7 @@ public final class App {
         Ui.installLookAndFeel();
         SwingUtilities.updateComponentTreeUI(frame);
         frame.setIconImages(Ui.icons());
-        pages.forEach(Page::refresh);
+        for (Page p : pages) if (p != null) p.refresh();
     }
 
     /** Re-reads the KDE colours shortly after kdeglobals changes (Plasma writes it several times per change). */

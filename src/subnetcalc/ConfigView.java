@@ -6,10 +6,6 @@ import static subnetcalc.Ui.status;
 
 import java.awt.BorderLayout;
 import java.awt.Cursor;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -17,15 +13,21 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import java.util.function.Supplier;
 import java.util.prefs.Preferences;
 import javax.swing.Box;
 import javax.swing.ButtonGroup;
-import javax.swing.SwingConstants;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -34,10 +36,13 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
+import javax.swing.SwingConstants;
 import javax.swing.border.EmptyBorder;
 
 /** Cisco IOS config generator page, driven by the plan on the VLSM planner page. */
 final class ConfigView implements Page {
+    private static final String[] PORT_TYPES = {"FastEthernet", "GigabitEthernet"};
+
     private final JPanel root = new JPanel(new BorderLayout());
     private final Preferences prefs;
     private final VlsmView vlsm;
@@ -46,6 +51,8 @@ final class ConfigView implements Page {
     private final List<Runnable> apply = new ArrayList<>();
     private final JPanel form = new JPanel(new GridBagLayout());
     private final List<Section> sections = new ArrayList<>();
+    /** Visibility wanted by this refresh, applied in one pass so unchanged rows cause no relayout. */
+    private final Map<JComponent, Boolean> wanted = new IdentityHashMap<>();
     private Section current;
     private int formRow;
 
@@ -58,8 +65,6 @@ final class ConfigView implements Page {
     private final JButton copy = new JButton("Copy config");
     private final Choice device;
     private IosConfig.Result result;
-
-    private static final String[] PORT_TYPES = {"FastEthernet", "GigabitEthernet"};
 
     // controls whose state decides which rows are visible
     private final Choice routing, switchKind, nat;
@@ -223,7 +228,7 @@ final class ConfigView implements Page {
     @Override public void refresh() {
         int kind = switchKind.selected();
         boolean hasSwitch = kind != 0, layer3 = kind == 2, stick = !layer3 && routing.selected() == 0;
-        sections.forEach(Section::apply);
+        for (Section s : sections) for (JComponent c : s.parts) wanted.put(c, s.expanded);
         showIf(routerRoutingRows, !layer3);
         lanPortRow.relabel("Router", layer3 ? "Port to switch" : stick ? "Trunk port" : "First LAN port");
         showIf(switchOnly, hasSwitch);
@@ -239,8 +244,18 @@ final class ConfigView implements Page {
         showIf(uplinkRows, uplink.isOn());
         showIf(poolRows, uplink.isOn() && nat.selected() == 2);
         showIf(natRows, uplink.isOn() && nat.selected() != 0);
-        form.revalidate();
-        form.repaint();
+        boolean changed = false;
+        for (Map.Entry<JComponent, Boolean> e : wanted.entrySet()) {
+            if (e.getKey().isVisible() != e.getValue()) {
+                e.getKey().setVisible(e.getValue());
+                changed = true;
+            }
+        }
+        wanted.clear();
+        if (changed) {
+            form.revalidate();
+            form.repaint();
+        }
 
         Vlsm.Plan plan = vlsm.plan();
         if (plan == null) {
@@ -300,27 +315,17 @@ final class ConfigView implements Page {
             chevron.down = expanded;
         }
 
-        void add(JComponent c) {
-            parts.add(c);
-            c.putClientProperty(Section.class, this);
-        }
-
         void toggle() {
             expanded = !expanded;
             chevron.down = expanded;
             prefs.putBoolean(key, expanded);
             refresh();
         }
-
-        void apply() { parts.forEach(c -> c.setVisible(expanded)); }
     }
 
-    /** Shows {@code parts} when {@code condition} holds and their section is expanded. */
-    private static void showIf(List<JComponent> parts, boolean condition) {
-        for (JComponent c : parts) {
-            Section s = (Section) c.getClientProperty(Section.class);
-            c.setVisible(condition && (s == null || s.expanded));
-        }
+    /** {@code parts} stay visible only if {@code condition} holds (and their section is open). */
+    private void showIf(List<JComponent> parts, boolean condition) {
+        for (JComponent c : parts) wanted.merge(c, condition, Boolean::logicalAnd);
     }
 
     private void section(String title, List<JComponent> group) {
@@ -375,8 +380,8 @@ final class ConfigView implements Page {
         c.insets.right = 0;
         c.fill = GridBagConstraints.NONE;
         form.add(control, c);
-        current.add(box);
-        current.add(control);
+        current.parts.add(box);
+        current.parts.add(control);
         Row row = new Row(l, box, control);
         if (group != null) row.addTo(group);
         return row;
@@ -389,8 +394,8 @@ final class ConfigView implements Page {
         GridBagConstraints c = at(0, formRow++, 2);
         c.insets.right = 0;
         form.add(control, c);
-        current.add(box);
-        current.add(control);
+        current.parts.add(box);
+        current.parts.add(control);
         if (group != null) {
             group.add(box);
             group.add(control);
@@ -444,7 +449,7 @@ final class ConfigView implements Page {
         private final List<JComponent> all = new ArrayList<>(), vty = new ArrayList<>(), ssh = new ArrayList<>(),
                 lines = new ArrayList<>();
 
-        AccessForm(String title, String key, java.util.function.Supplier<IosConfig.Access> target) {
+        AccessForm(String title, String key, Supplier<IosConfig.Access> target) {
             IosConfig.Access d = new IosConfig.Access();
             section(title, all);
             row("Enable secret", secret(v -> target.get().enableSecret = v), all);

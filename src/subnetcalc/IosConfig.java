@@ -612,8 +612,9 @@ final class IosConfig {
 
     /** Config text with optional wrapping and comments. */
     private static final class Out {
-        private final StringBuilder sb = new StringBuilder();
+        private final StringBuilder sb = new StringBuilder(2048);
         private final Options o;
+        private String pending;
 
         Out(Options o) { this.o = o; }
 
@@ -625,22 +626,29 @@ final class IosConfig {
         }
 
         void end() {
+            pending = null;
             if (o.wrap) {
                 line("end");
                 line("write memory");
             }
         }
 
-        void section(String title) {
-            line("!");
-            if (o.comments) line("! " + title);
-        }
+        /** Starts a section; its "!" separator and title are written only if something follows. */
+        void section(String title) { pending = title; }
 
         void comment(String text) {
             if (o.comments) line("! " + text);
         }
 
-        void line(String text) { sb.append(text).append('\n'); }
+        void line(String text) {
+            if (pending != null) {
+                String title = pending;
+                pending = null;
+                line("!");
+                if (o.comments) line("! " + title);
+            }
+            sb.append(text).append('\n');
+        }
 
         @Override public String toString() { return sb.toString(); }
     }
