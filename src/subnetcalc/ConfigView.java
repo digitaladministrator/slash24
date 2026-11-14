@@ -5,6 +5,11 @@ import static subnetcalc.Ui.dim;
 import static subnetcalc.Ui.status;
 
 import java.awt.BorderLayout;
+import java.awt.Cursor;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -20,6 +25,7 @@ import java.util.function.IntConsumer;
 import java.util.prefs.Preferences;
 import javax.swing.Box;
 import javax.swing.ButtonGroup;
+import javax.swing.SwingConstants;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -39,6 +45,8 @@ final class ConfigView implements Page {
     /** Copies every control's value into {@link #options}; may throw for malformed numbers. */
     private final List<Runnable> apply = new ArrayList<>();
     private final JPanel form = new JPanel(new GridBagLayout());
+    private final List<Section> sections = new ArrayList<>();
+    private Section current;
     private int formRow;
 
     private final JLabel planInfo = new JLabel(" ");
@@ -70,6 +78,10 @@ final class ConfigView implements Page {
         IosConfig.Options d = new IosConfig.Options();
 
         int oldDesign = prefs.getInt("ios.design", 0); // 1.3.0 had a single "LAN design" choice
+        JLabel hint = dim("<html>Empty optional fields are left out of the config. \"auto\" picks a value for you.</html>");
+        GridBagConstraints h = at(0, formRow++, 2);
+        h.insets.bottom = 10;
+        form.add(hint, h);
 
         section("Router", null);
         routerName = text("routerName", d.routerName, 12, v -> options.routerName = v);
@@ -79,7 +91,7 @@ final class ConfigView implements Page {
         routing = choice("routing", new String[] {"Router on a stick", "Port per subnet"}, oldDesign == 1 ? 1 : 0,
                 i -> options.routing = IosConfig.Routing.values()[i]);
         wideRow("Inter-VLAN routing", routing, routerRoutingRows);
-        lanPortLabel = row("Trunk port", text("lanPort", d.lanPort, 18, v -> options.lanPort = v), null).label();
+        lanPortLabel = row("Trunk port", tip(text("lanPort", d.lanPort, 18, v -> options.lanPort = v), "An interface name, or auto / empty for the first free port"), null).label();
 
         section("Switch", null);
         switchKind = choice("switchKind", new String[] {"None", "Layer 2", "Layer 3"}, oldDesign == 2 ? 2 : 1,
@@ -88,14 +100,14 @@ final class ConfigView implements Page {
         row("Hostname", text("switchName", d.switchName, 12, v -> options.switchName = v), switchOnly);
         row("Port type", choice("switchPortType", PORT_TYPES, 0, i -> options.switchPortType = PORT_TYPES[i]), switchOnly);
         row("Numbering", choice("switchNumbering", new String[] {"0/1", "1/0/1"}, 0, i -> options.switchStacked = i == 1), switchOnly);
-        uplinkPortLabel = row("Trunk port", text("uplinkPort", d.uplinkPort, 18, v -> options.uplinkPort = v), uplinkPortRows).label();
+        uplinkPortLabel = row("Trunk port", tip(text("uplinkPort", d.uplinkPort, 18, v -> options.uplinkPort = v), "An interface name, or auto / empty for the usual uplink port"), uplinkPortRows).label();
         row("First VLAN ID", number("vlanStart", d.vlanStart, "First VLAN ID", null, v -> options.vlanStart = v), switchOnly);
         row("VLAN ID step", number("vlanStep", d.vlanStep, "VLAN ID step", null, v -> options.vlanStep = v), switchOnly);
         row("Native VLAN", number("nativeVlan", 0, "Native VLAN", 0, v -> options.nativeVlan = v), stickRows);
-        row("Access ports per VLAN", number("accessPorts", d.accessPorts, "Access ports per VLAN", null,
+        row("Access ports per VLAN", number("accessPorts", d.accessPorts, "Access ports per VLAN", 0,
                 v -> options.accessPorts = v), switchOnly);
-        row("Management VLAN", text("mgmtVlan", d.mgmtVlan, 8, v -> options.mgmtVlan = v), layer2Rows);
-        row("Management address", text("mgmtAddress", d.mgmtAddress, 16, v -> options.mgmtAddress = v), layer2Rows);
+        row("Management VLAN", tip(text("mgmtVlan", d.mgmtVlan, 8, v -> options.mgmtVlan = v), "A VLAN ID, auto, or empty for no management interface"), layer2Rows);
+        row("Management address", tip(text("mgmtAddress", d.mgmtAddress, 16, v -> options.mgmtAddress = v), "An address, auto, or empty for no management interface"), layer2Rows);
 
         section("Addressing", null);
         row("Gateway", choice("gateway", new String[] {"First usable", "Last usable"}, 0, i -> options.gatewayLast = i == 1), null);
@@ -128,7 +140,7 @@ final class ConfigView implements Page {
         row("Uplink", Ui.row(uplink), null);
         row("Interface", text("uplinkInterface", d.uplinkInterface, 18, v -> options.uplinkInterface = v), uplinkRows);
         row("Address", text("uplinkAddress", d.uplinkAddress, 18, v -> options.uplinkAddress = v), uplinkRows);
-        row("Next hop", text("nextHop", d.nextHop, 14, v -> options.nextHop = v), uplinkRows);
+        row("Next hop", tip(text("nextHop", d.nextHop, 14, v -> options.nextHop = v), "Empty for no default route"), uplinkRows);
         nat = choice("nat", new String[] {"Off", "PAT", "Pool"}, 1, i -> options.nat = IosConfig.Nat.values()[i]);
         row("NAT", nat, uplinkRows);
         row("Pool start", text("poolStart", d.poolStart, 14, v -> options.poolStart = v), poolRows);
@@ -211,21 +223,22 @@ final class ConfigView implements Page {
     @Override public void refresh() {
         int kind = switchKind.selected();
         boolean hasSwitch = kind != 0, layer3 = kind == 2, stick = !layer3 && routing.selected() == 0;
-        routerRoutingRows.forEach(c -> c.setVisible(!layer3));
+        sections.forEach(Section::apply);
+        showIf(routerRoutingRows, !layer3);
         lanPortLabel.setText(layer3 ? "Port to switch" : stick ? "Trunk port" : "First LAN port");
-        switchOnly.forEach(c -> c.setVisible(hasSwitch));
-        uplinkPortRows.forEach(c -> c.setVisible(hasSwitch && (layer3 || stick)));
+        showIf(switchOnly, hasSwitch);
+        showIf(uplinkPortRows, hasSwitch && (layer3 || stick));
         uplinkPortLabel.setText(layer3 ? "Routed port to router" : "Trunk port");
-        stickRows.forEach(c -> c.setVisible(hasSwitch && stick));
-        layer2Rows.forEach(c -> c.setVisible(kind == 1));
+        showIf(stickRows, hasSwitch && stick);
+        showIf(layer2Rows, kind == 1);
         routerAccess.update(true);
         switchAccess.update(hasSwitch);
-        linkRows.forEach(c -> c.setVisible(links.isOn()));
-        dhcpRows.forEach(c -> c.setVisible(dhcp.isOn()));
-        ospfRows.forEach(c -> c.setVisible(ospf.isOn()));
-        uplinkRows.forEach(c -> c.setVisible(uplink.isOn()));
-        poolRows.forEach(c -> c.setVisible(uplink.isOn() && nat.selected() == 2));
-        natRows.forEach(c -> c.setVisible(uplink.isOn() && nat.selected() != 0));
+        showIf(linkRows, links.isOn());
+        showIf(dhcpRows, dhcp.isOn());
+        showIf(ospfRows, ospf.isOn());
+        showIf(uplinkRows, uplink.isOn());
+        showIf(poolRows, uplink.isOn() && nat.selected() == 2);
+        showIf(natRows, uplink.isOn() && nat.selected() != 0);
         form.revalidate();
         form.repaint();
 
@@ -272,14 +285,68 @@ final class ConfigView implements Page {
 
     // ---- form building -------------------------------------------------------------------------
 
+    /** A collapsible group of rows; its open/closed state is remembered. */
+    private final class Section {
+        private final List<JComponent> parts = new ArrayList<>();
+        private final String key;
+        private final Ui.Chevron chevron = new Ui.Chevron(true);
+        boolean expanded;
+
+        Section(String title) {
+            key = "ios.section." + title;
+            expanded = prefs.getBoolean(key, true);
+            chevron.down = expanded;
+        }
+
+        void add(JComponent c) {
+            parts.add(c);
+            c.putClientProperty(Section.class, this);
+        }
+
+        void toggle() {
+            expanded = !expanded;
+            chevron.down = expanded;
+            prefs.putBoolean(key, expanded);
+            refresh();
+        }
+
+        void apply() { parts.forEach(c -> c.setVisible(expanded)); }
+    }
+
+    /** Shows {@code parts} when {@code condition} holds and their section is expanded. */
+    private static void showIf(List<JComponent> parts, boolean condition) {
+        for (JComponent c : parts) {
+            Section s = (Section) c.getClientProperty(Section.class);
+            c.setVisible(condition && (s == null || s.expanded));
+        }
+    }
+
     private void section(String title, List<JComponent> group) {
-        JLabel l = new JLabel(title);
+        Section section = new Section(title);
+        JLabel l = new JLabel(title, section.chevron, SwingConstants.LEFT);
+        l.setIconTextGap(6);
         l.setFont(Ui.SANS.deriveFont(Font.BOLD, 14f));
+        l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        l.setToolTipText("Show or hide these settings");
+        l.setFocusable(true);
+        l.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                l.requestFocusInWindow();
+                section.toggle();
+            }
+        });
+        l.addKeyListener(new KeyAdapter() {
+            @Override public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_SPACE || e.getKeyCode() == KeyEvent.VK_ENTER) section.toggle();
+            }
+        });
         GridBagConstraints c = at(0, formRow++, 2);
-        c.insets.top = formRow == 1 ? 0 : 16;
+        c.insets.top = formRow == 1 ? 0 : 14;
         c.insets.bottom = 4;
         form.add(l, c);
         if (group != null) group.add(l);
+        sections.add(section);
+        current = section;
     }
 
     record Row(JLabel label, JComponent control) {
@@ -296,6 +363,8 @@ final class ConfigView implements Page {
         c.insets.right = 0;
         c.fill = GridBagConstraints.NONE;
         form.add(control, c);
+        current.add(l);
+        current.add(control);
         Row row = new Row(l, control);
         if (group != null) row.addTo(group);
         return row;
@@ -308,6 +377,8 @@ final class ConfigView implements Page {
         GridBagConstraints c = at(0, formRow++, 2);
         c.insets.right = 0;
         form.add(control, c);
+        current.add(l);
+        current.add(control);
         if (group != null) {
             group.add(l);
             group.add(control);
@@ -323,6 +394,11 @@ final class ConfigView implements Page {
             refresh();
         });
         return f;
+    }
+
+    private static <T extends JComponent> T tip(T c, String text) {
+        c.setToolTipText(text);
+        return c;
     }
 
     /** A whole-number field; when {@code blankValue} is not null an empty field means that value. */
@@ -350,7 +426,7 @@ final class ConfigView implements Page {
         return f;
     }
 
-    /** Passwords, local user, Telnet/SSH and line settings for one device. */
+    /** Passwords, Telnet/SSH and line settings for one device. */
     private final class AccessForm {
         private final Choice remote;
         private final List<JComponent> all = new ArrayList<>(), vty = new ArrayList<>(), ssh = new ArrayList<>(),
@@ -361,12 +437,12 @@ final class ConfigView implements Page {
             section(title, all);
             row("Enable secret", secret(v -> target.get().enableSecret = v), all);
             row("Console password", secret(v -> target.get().consolePassword = v), all);
-            row("Local username", text(key + ".username", d.username, 14, v -> target.get().username = v), all);
-            row("Local user password", secret(v -> target.get().userPassword = v), all);
             remote = choice(key + ".remote", new String[] {"Off", "Telnet", "SSH", "Both"}, 0,
                     i -> target.get().remote = IosConfig.Remote.values()[i]);
             row("Remote access", remote, all);
             row("VTY password", secret(v -> target.get().vtyPassword = v), vty);
+            row("SSH username", text(key + ".username", d.username, 14, v -> target.get().username = v), ssh);
+            row("SSH password", secret(v -> target.get().userPassword = v), ssh);
             row("SSH domain", text(key + ".sshDomain", d.sshDomain, 14, v -> target.get().sshDomain = v), ssh);
             row("RSA key size", choice(key + ".keyBits", new String[] {"1024", "2048"}, 1,
                     i -> target.get().keyBits = i == 0 ? 1024 : 2048), ssh);
@@ -379,10 +455,10 @@ final class ConfigView implements Page {
 
         void update(boolean shown) {
             int r = remote.selected();
-            all.forEach(c -> c.setVisible(shown));
-            vty.forEach(c -> c.setVisible(shown && (r == 1 || r == 3)));
-            ssh.forEach(c -> c.setVisible(shown && r >= 2));
-            lines.forEach(c -> c.setVisible(shown && r != 0));
+            showIf(all, shown);
+            showIf(vty, shown && r == 1); // with SSH available, Telnet also signs in as the SSH user
+            showIf(ssh, shown && r >= 2);
+            showIf(lines, shown && r != 0);
         }
     }
 

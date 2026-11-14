@@ -204,8 +204,9 @@ public final class SubnetTest {
         has("ios saved", r.router(), "end\nwrite memory\n");
         missing("ios no NAT without uplink", r.router(), "ip nat");
         has("ios trunk", r.switchConfig(), "interface GigabitEthernet0/1\n description Trunk to R1\n switchport mode trunk\n");
-        has("ios access range", r.switchConfig(), "interface range FastEthernet0/3 - 4\n description ENGINEERING\n switchport mode access\n"
+        has("ios access range", r.switchConfig(), "interface range FastEthernet0/3 - 4\n description ENGINEERING\n"
                 + " switchport access vlan 20\n");
+        missing("ios no access mode line", r.switchConfig(), "switchport mode access");
 
         IosConfig.Options o = new IosConfig.Options();
         o.ospf = true;
@@ -302,7 +303,7 @@ public final class SubnetTest {
         has("ios telnet vty", r.switchConfig(), "line vty 0 15\n password telnetpw\n login\n transport input telnet\n");
         missing("ios switch no ssh keys", r.switchConfig(), "crypto key");
 
-        String[][] access = {{"ssh-no-user"}, {"telnet-no-password"}, {"password-with-space"}, {"user-without-password"}, {"banner-hash"}};
+        String[][] access = {{"ssh-no-user"}, {"telnet-no-password"}, {"password-with-space"}, {"ssh-user-without-password"}, {"banner-hash"}};
         for (String[] b : access) {
             o = new IosConfig.Options();
             IosConfig.Access a = o.routerAccess;
@@ -310,7 +311,10 @@ public final class SubnetTest {
                 case "ssh-no-user" -> a.remote = IosConfig.Remote.SSH;
                 case "telnet-no-password" -> a.remote = IosConfig.Remote.TELNET;
                 case "password-with-space" -> a.enableSecret = "two words";
-                case "user-without-password" -> a.username = "admin";
+                case "ssh-user-without-password" -> {
+                    a.remote = IosConfig.Remote.SSH;
+                    a.username = "admin";
+                }
                 default -> a.banner = "no # allowed";
             }
             checks++;
@@ -339,6 +343,50 @@ public final class SubnetTest {
             fail("ios should reject a port used twice");
         } catch (IllegalArgumentException expected) {
             // two roles on one port
+        }
+
+        // 1.3.2: empty optional fields are left out; the SSH user only exists with SSH
+        o = new IosConfig.Options();
+        o.mgmtVlan = "";
+        o.routerName = "";
+        o.switchName = "";
+        o.uplink = true;
+        o.nextHop = "";
+        o.ospf = true;
+        o.routerAccess.username = "admin";
+        o.routerAccess.userPassword = "pw";
+        r = IosConfig.generate(office, o);
+        missing("ios empty mgmt vlan", r.switchConfig(), "interface Vlan");
+        missing("ios empty mgmt excluded", r.router(), "192.168.10.114");
+        missing("ios empty hostname", r.router(), "hostname");
+        has("ios fallback names", r.router(), " description Trunk to switch\n");
+        has("ios fallback names on switch", r.switchConfig(), " description Trunk to router\n");
+        missing("ios empty next hop", r.router(), "ip route 0.0.0.0");
+        missing("ios no default to originate", r.router(), "default-information originate");
+        missing("ios user only with ssh", r.router(), "username");
+
+        o = new IosConfig.Options();
+        o.mgmtAddress = "";
+        o.routerAccess.remote = IosConfig.Remote.BOTH;
+        o.routerAccess.username = "admin";
+        o.routerAccess.userPassword = "pw";
+        o.routerAccess.sshDomain = "";
+        r = IosConfig.generate(office, o);
+        missing("ios empty mgmt address", r.switchConfig(), "ip default-gateway");
+        has("ios empty ssh domain", r.router(), "! SSH keys need ip domain-name to be set on the device already\ncrypto key");
+        has("ios both uses local login", r.router(), " login local\n transport input ssh telnet\n");
+
+        o = new IosConfig.Options();
+        o.routerName = "";
+        o.routerAccess.remote = IosConfig.Remote.SSH;
+        o.routerAccess.username = "admin";
+        o.routerAccess.userPassword = "pw";
+        checks++;
+        try {
+            IosConfig.generate(office, o);
+            fail("ios should reject SSH without a hostname");
+        } catch (IllegalArgumentException expected) {
+            // keys need a hostname
         }
 
         eq("ios name", "GUEST_WI_FI", IosConfig.name("Guest Wi-Fi!", "X"));

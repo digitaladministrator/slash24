@@ -108,6 +108,7 @@ final class IosConfig {
         private Vlsm.Allocation transit;
         private String uplinkName, switchUplink;
         private int mgmtIndex = -1, mgmtIp;
+        private String routerLabel, switchLabel;
         private int nextPort;
 
         Generator(Vlsm.Plan plan, Options o) {
@@ -119,10 +120,14 @@ final class IosConfig {
         }
 
         Result run() {
-            check(HOSTNAME.matcher(o.routerName).matches(), "Router hostname must start with a letter and use only letters, digits and hyphens");
+            check(o.routerName.isBlank() || HOSTNAME.matcher(o.routerName.strip()).matches(),
+                    "Router hostname must start with a letter and use only letters, digits and hyphens, or be empty");
             if (hasSwitch) {
-                check(HOSTNAME.matcher(o.switchName).matches(), "Switch hostname must start with a letter and use only letters, digits and hyphens");
+                check(o.switchName.isBlank() || HOSTNAME.matcher(o.switchName.strip()).matches(),
+                        "Switch hostname must start with a letter and use only letters, digits and hyphens, or be empty");
             }
+            routerLabel = o.routerName.isBlank() ? "router" : o.routerName.strip();
+            switchLabel = o.switchName.isBlank() ? "switch" : o.switchName.strip();
             check(hasSwitch || !stick, "Router on a stick needs a switch to trunk to: choose a switch, or a port per subnet");
             for (Vlsm.Allocation a : plan.allocations()) {
                 (o.smallSubnetsAreLinks && a.need().hosts() <= 2 ? links : lans).add(a);
@@ -135,8 +140,8 @@ final class IosConfig {
             names();
             if (hasSwitch) switchSettings();
             services();
-            access(o.routerAccess, "Router");
-            if (hasSwitch) access(o.switchAccess, "Switch");
+            access(o.routerAccess, "Router", o.routerName);
+            if (hasSwitch) access(o.switchAccess, "Switch", o.switchName);
             ports();
             return new Result(routerConfig(), hasSwitch ? switchConfig() : null);
         }
@@ -172,8 +177,8 @@ final class IosConfig {
                 check(!rest.matches("\\d+") || Integer.parseInt(rest) > lastAccess,
                         "Switch uplink port " + switchUplink + " is also one of the access ports");
             }
-            if (o.switchKind == SwitchKind.LAYER2) {
-                if (isAuto(o.mgmtVlan)) {
+            if (o.switchKind == SwitchKind.LAYER2 && !o.mgmtVlan.isBlank() && !o.mgmtAddress.isBlank()) {
+                if (isAutoWord(o.mgmtVlan)) {
                     mgmtIndex = 0;
                     for (int i = 0; i < lanNames.size(); i++) if (lanNames.get(i).contains("MANAG")) mgmtIndex = i;
                 } else {
@@ -182,7 +187,7 @@ final class IosConfig {
                     mgmtIndex = vlans.indexOf(Integer.parseInt(o.mgmtVlan.strip()));
                 }
                 Subnet s = lans.get(mgmtIndex).subnet();
-                if (isAuto(o.mgmtAddress)) {
+                if (isAutoWord(o.mgmtAddress)) {
                     check(s.usable() >= 2, "The management VLAN needs room for the switch's address");
                     mgmtIp = o.gatewayLast ? s.lastHost() - 1 : s.firstHost() + 1;
                 } else {
@@ -210,23 +215,24 @@ final class IosConfig {
             }
         }
 
-        private static void access(Access a, String device) {
+        private static void access(Access a, String device, String hostname) {
             for (String[] p : new String[][] {{a.enableSecret, "enable secret"}, {a.consolePassword, "console password"},
                     {a.userPassword, "user password"}, {a.vtyPassword, "VTY password"}}) {
                 check(p[0].isEmpty() || PASSWORD.matcher(p[0]).matches(), device + " " + p[1] + " can't contain spaces or '?'");
             }
-            check(a.username.isEmpty() || USERNAME.matcher(a.username).matches(),
-                    device + " username can only use letters, digits and . _ @ -");
-            check(a.username.isEmpty() == a.userPassword.isEmpty(), device + " local user needs both a username and a password");
+            boolean ssh = a.remote == Remote.SSH || a.remote == Remote.BOTH;
             check(a.banner.indexOf('#') < 0 && !a.banner.matches(".*\\p{Cntrl}.*"), device + " banner can't contain '#'");
             check(a.timeout >= -1 && a.timeout <= 35791, device + " session timeout must be a number of minutes");
-            if (a.remote == Remote.SSH || a.remote == Remote.BOTH) {
-                check(!a.username.isEmpty(), device + " SSH logins need a local username and password");
-                check(DOMAIN.matcher(a.sshDomain).matches() && a.sshDomain.contains("."),
-                        device + " SSH needs a domain name such as lab.local to create its keys");
+            if (ssh) {
+                check(!a.username.isEmpty() && !a.userPassword.isEmpty(),
+                        device + " SSH needs an SSH username and password: IOS only accepts SSH logins from a local user");
+                check(USERNAME.matcher(a.username).matches(), device + " SSH username can only use letters, digits and . _ @ -");
+                check(!hostname.isBlank(), device + " SSH needs a hostname to create its keys");
+                check(a.sshDomain.isBlank() || DOMAIN.matcher(a.sshDomain.strip()).matches(),
+                        device + " SSH domain can only use letters, digits, dots and hyphens, or be empty");
             }
             if (a.remote == Remote.TELNET) {
-                check(!a.username.isEmpty() || !a.vtyPassword.isEmpty(), device + " Telnet needs a VTY password or a local user");
+                check(!a.vtyPassword.isEmpty(), device + " Telnet needs a VTY password");
             }
         }
 
@@ -263,7 +269,7 @@ final class IosConfig {
         private String routerConfig() {
             Out out = new Out(o);
             out.begin();
-            out.line("hostname " + o.routerName);
+            if (!o.routerName.isBlank()) out.line("hostname " + o.routerName.strip());
             if (o.extras) out.line("no ip domain-lookup");
             securityTop(out, o.routerAccess);
             boolean natOn = o.uplink && o.nat != Nat.OFF; // NAT lives on the uplink, so it is off without one
@@ -276,7 +282,7 @@ final class IosConfig {
             if (stick) {
                 String trunk = lanPorts.getFirst();
                 out.line("interface " + trunk);
-                out.line(" description Trunk to " + o.switchName);
+                out.line(" description Trunk to " + switchLabel);
                 out.line(" no shutdown");
                 if (o.nativeVlan > 0) {
                     out.line("interface " + trunk + "." + o.nativeVlan);
@@ -297,7 +303,7 @@ final class IosConfig {
             } else if (layer3) {
                 Subnet s = transit.subnet();
                 out.line("interface " + lanPorts.getFirst());
-                out.line(" description Link to " + o.switchName + " (" + clean(transit.need().name()) + ")");
+                out.line(" description Link to " + switchLabel + " (" + clean(transit.need().name()) + ")");
                 out.line(" ip address " + format(s.firstHost()) + " " + format(s.mask()));
                 if (natOn) out.line(" ip nat inside");
                 out.line(" no shutdown");
@@ -326,6 +332,7 @@ final class IosConfig {
             }
             String defaultRoute = null;
             if (o.uplink) {
+                check(!o.uplinkAddress.isBlank(), "The uplink needs an address with a prefix, or dhcp");
                 boolean viaDhcp = o.uplinkAddress.strip().equalsIgnoreCase("dhcp");
                 out.line("interface " + uplinkName);
                 out.line(" description Internet uplink");
@@ -339,11 +346,10 @@ final class IosConfig {
                 if (natOn) out.line(" ip nat outside");
                 out.line(" no shutdown");
                 if (!o.nextHop.isBlank()) {
-                    check(isAddress(o.nextHop), "Next hop must be an IPv4 address");
+                    check(isAddress(o.nextHop), "Next hop must be an IPv4 address, or empty for no default route");
                     defaultRoute = "ip route 0.0.0.0 0.0.0.0 " + o.nextHop.strip();
-                } else {
-                    check(viaDhcp, "Enter the next-hop address for the default route (or use dhcp on the uplink)");
-                    defaultRoute = "";
+                } else if (viaDhcp) {
+                    defaultRoute = ""; // learned from the DHCP server
                 }
             }
 
@@ -427,7 +433,7 @@ final class IosConfig {
         private String switchConfig() {
             Out out = new Out(o);
             out.begin();
-            out.line("hostname " + o.switchName);
+            if (!o.switchName.isBlank()) out.line("hostname " + o.switchName.strip());
             if (o.extras) out.line("no ip domain-lookup");
             if (layer3) out.line("ip routing");
             securityTop(out, o.switchAccess);
@@ -451,7 +457,6 @@ final class IosConfig {
                     int last = port + o.accessPorts - 1;
                     out.line(o.accessPorts == 1 ? "interface " + prefix + port : "interface range " + prefix + port + " - " + last);
                     out.line(" description " + lanNames.get(i));
-                    out.line(" switchport mode access");
                     out.line(" switchport access vlan " + vlans.get(i));
                     out.line(" no shutdown");
                 }
@@ -468,7 +473,7 @@ final class IosConfig {
                 }
                 Subnet t = transit.subnet();
                 out.line("interface " + switchUplink);
-                out.line(" description Link to " + o.routerName);
+                out.line(" description Link to " + routerLabel);
                 out.line(" no switchport");
                 out.line(" ip address " + format(t.lastHost()) + " " + format(t.mask()));
                 out.line(" no shutdown");
@@ -486,24 +491,29 @@ final class IosConfig {
                 }
             } else {
                 if (stick) {
-                    out.section("Trunk to " + o.routerName);
+                    out.section("Trunk to " + routerLabel);
                     out.line("interface " + switchUplink);
-                    out.line(" description Trunk to " + o.routerName);
+                    out.line(" description Trunk to " + routerLabel);
                     out.line(" switchport mode trunk");
                     if (o.nativeVlan > 0) out.line(" switchport trunk native vlan " + o.nativeVlan);
                     out.line(" no shutdown");
                 }
-                Subnet s = lans.get(mgmtIndex).subnet();
-                out.section("Management");
-                out.line("interface Vlan" + vlans.get(mgmtIndex));
-                out.line(" description Management (" + lanNames.get(mgmtIndex) + ")");
-                out.line(" ip address " + format(mgmtIp) + " " + format(s.mask()));
-                out.line(" no shutdown");
-                out.line("ip default-gateway " + format(gateway(s)));
+                if (mgmtIndex >= 0) management(out);
             }
             lines(out, o.switchAccess);
             out.end();
             return out.toString();
+        }
+
+        /** The layer 2 switch's own address, which remote access to it needs. */
+        private void management(Out out) {
+            Subnet s = lans.get(mgmtIndex).subnet();
+            out.section("Management");
+            out.line("interface Vlan" + vlans.get(mgmtIndex));
+            out.line(" description Management (" + lanNames.get(mgmtIndex) + ")");
+            out.line(" ip address " + format(mgmtIp) + " " + format(s.mask()));
+            out.line(" no shutdown");
+            out.line("ip default-gateway " + format(gateway(s)));
         }
 
         // ---- shared pieces ---------------------------------------------------------------------
@@ -511,16 +521,17 @@ final class IosConfig {
         /** Global security commands; these go near the top so SSH keys see the hostname and domain. */
         private void securityTop(Out out, Access a) {
             boolean ssh = a.remote == Remote.SSH || a.remote == Remote.BOTH;
-            boolean anyPassword = !a.enableSecret.isEmpty() || !a.consolePassword.isEmpty() || !a.vtyPassword.isEmpty()
-                    || !a.userPassword.isEmpty();
+            boolean anyPassword = !a.enableSecret.isEmpty() || !a.consolePassword.isEmpty()
+                    || (a.remote == Remote.TELNET && !a.vtyPassword.isEmpty()) || ssh;
             if (!anyPassword && !ssh && a.banner.isBlank()) return;
             out.section("Security");
             if (a.encrypt && anyPassword) out.line("service password-encryption");
             if (!a.enableSecret.isEmpty()) out.line("enable secret " + a.enableSecret);
-            if (!a.username.isEmpty()) out.line("username " + a.username + " privilege 15 secret " + a.userPassword);
+            if (ssh) out.line("username " + a.username + " privilege 15 secret " + a.userPassword);
             if (!a.banner.isBlank()) out.line("banner motd #" + a.banner.strip() + "#");
             if (ssh) {
-                out.line("ip domain-name " + a.sshDomain.strip());
+                if (a.sshDomain.isBlank()) out.comment("SSH keys need ip domain-name to be set on the device already");
+                else out.line("ip domain-name " + a.sshDomain.strip());
                 out.line("crypto key generate rsa general-keys modulus " + a.keyBits);
                 out.line("ip ssh version 2");
             }
@@ -544,7 +555,7 @@ final class IosConfig {
             }
             if (vty) {
                 out.line(a.allVty ? "line vty 0 15" : "line vty 0 4");
-                if (!a.username.isEmpty()) {
+                if (a.remote != Remote.TELNET) {
                     out.line(" login local");
                 } else {
                     out.line(" password " + a.vtyPassword);
@@ -634,7 +645,11 @@ final class IosConfig {
         @Override public String toString() { return sb.toString(); }
     }
 
-    static boolean isAuto(String s) { return s.isBlank() || s.strip().equalsIgnoreCase("auto"); }
+    /** Port fields: empty or "auto" both mean "pick the next free port", since a port can't be left out. */
+    static boolean isAuto(String s) { return s.isBlank() || isAutoWord(s); }
+
+    /** Optional fields: "auto" picks a value, while empty leaves the setting out of the config. */
+    static boolean isAutoWord(String s) { return s.strip().equalsIgnoreCase("auto"); }
 
     /** An IOS-safe name for VLANs and DHCP pools: upper case letters, digits and underscores. */
     static String name(String raw, String fallback) {

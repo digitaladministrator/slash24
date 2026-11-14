@@ -632,6 +632,57 @@ public final class Ui {
         }
     }
 
+    /** Small arrow that points down (open, or a dropdown) or right (closed). */
+    static final class Chevron implements javax.swing.Icon {
+        boolean down;
+
+        Chevron(boolean down) { this.down = down; }
+
+        @Override public int getIconWidth() { return 12; }
+        @Override public int getIconHeight() { return 12; }
+
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.dim());
+            g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            java.awt.geom.Path2D p = new java.awt.geom.Path2D.Float();
+            if (down) {
+                p.moveTo(x + 2, y + 4);
+                p.lineTo(x + 6, y + 8);
+                p.lineTo(x + 10, y + 4);
+            } else {
+                p.moveTo(x + 4, y + 2);
+                p.lineTo(x + 8, y + 6);
+                p.lineTo(x + 4, y + 10);
+            }
+            g2.draw(p);
+            g2.dispose();
+        }
+    }
+
+    /** A check mark for the selected menu entry; an equal-sized blank keeps the others aligned. */
+    static final class Check implements javax.swing.Icon {
+        private final boolean on;
+
+        Check(boolean on) { this.on = on; }
+
+        @Override public int getIconWidth() { return 14; }
+        @Override public int getIconHeight() { return 14; }
+
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            if (!on) return;
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.accent());
+            g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            java.awt.geom.Path2D p = new java.awt.geom.Path2D.Float();
+            p.moveTo(x + 2, y + 7);
+            p.lineTo(x + 6, y + 11);
+            p.lineTo(x + 12, y + 3);
+            g2.draw(p);
+            g2.dispose();
+        }
+    }
+
     // ---- custom components ---------------------------------------------------------------------
 
     /** Breeze-style on/off switch. */

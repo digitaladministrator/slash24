@@ -4,6 +4,27 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-11-14
+
+### Changed
+- **One Theme dropdown** replaces the Match system and Dark mode switches in the header:
+  Match system, Light or Dark, with a check mark on the current choice. Ctrl+D still toggles.
+- **Collapsible settings sections** on the IOS config page: click a section header (or press Space
+  on it) to hide or show its settings. Open and closed sections are remembered.
+- **Empty optional fields are left out of the config.** Clearing a field now removes that setting
+  instead of using a default: management VLAN or address (no management interface), router and
+  switch hostnames (no `hostname` line; descriptions say "router" / "switch"), next hop (no default
+  route), SSH domain, native VLAN, DNS server, domain name, router ID, passwords, banner and idle
+  timeout. "auto" still picks a value. Port fields treat empty as auto, and required values
+  (VLAN IDs, OSPF process and area, NAT pool) explain what's missing.
+- **No general local user in the security settings.** The local username and password rows are
+  gone from both devices; an SSH username and password appear only when SSH (or Both) is chosen,
+  because IOS only accepts SSH logins from a local user. Telnet uses the VTY password.
+- Switch access ports no longer include `switchport mode access`.
+
+### Added
+- Tests for empty optional fields and the SSH-only user (185 checks, up from 172).
+
 ## [1.3.1] - 2026-11-14
 
 ### Changed
@@ -132,6 +153,7 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.3.2]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.0...v1.2.1

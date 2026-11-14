@@ -10,6 +10,10 @@ import java.util.prefs.Preferences;
 import javax.swing.AbstractAction;
 import javax.swing.Box;
 import javax.swing.ButtonGroup;
+import javax.swing.JButton;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
+import javax.swing.SwingConstants;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -32,7 +36,9 @@ public final class App {
     private final Preferences prefs;
     private final List<Page> pages;
     private final JToggleButton[] tabs = new JToggleButton[PAGE_KEYS.length];
-    private final Ui.Switch matchSystem, dark;
+    private static final String[] MODES = {"system", "light", "dark"};
+    private static final String[] MODE_NAMES = {"Match system", "Light", "Dark"};
+    private final JButton theme = new JButton();
     private int page;
     /** "system", "dark" or "light". */
     private String mode;
@@ -76,16 +82,15 @@ public final class App {
 
         JLabel title = new JLabel("Subnet Calculator");
         title.setFont(Ui.SANS.deriveFont(Font.BOLD, 18f));
-        matchSystem = new Ui.Switch(mode.equals("system"),
-                "Follow the Plasma colour scheme, including changes made while the app is open",
-                on -> setMode(on ? "system" : Ui.theme.dark() ? "dark" : "light"));
-        dark = new Ui.Switch(Ui.theme.dark(), "Switch between dark and light mode (Ctrl+D)",
-                on -> setMode(on ? "dark" : "light"));
-        dark.setEnabled(!mode.equals("system"));
+        theme.setIcon(new Ui.Chevron(true));
+        theme.setHorizontalTextPosition(SwingConstants.LEADING);
+        theme.setIconTextGap(8);
+        theme.setToolTipText("Match the Plasma colour scheme, or choose light or dark (Ctrl+D toggles)");
+        theme.addActionListener(e -> themeMenu().show(theme, 0, theme.getHeight()));
+        updateThemeButton();
         JPanel header = new JPanel(new BorderLayout());
         header.add(Ui.row(title, Ui.dim(VERSION), Box.createHorizontalStrut(12), tabs[0], tabs[1], tabs[2], tabs[3]), BorderLayout.WEST);
-        header.add(Ui.row(matchSystem.label("Match system"), matchSystem, Box.createHorizontalStrut(10),
-                dark.label("Dark mode"), dark), BorderLayout.EAST);
+        header.add(Ui.row(theme), BorderLayout.EAST);
         header.setBorder(new EmptyBorder(0, 0, 14, 0));
 
         JPanel root = new JPanel(new BorderLayout());
@@ -110,6 +115,22 @@ public final class App {
         frame.setLocationRelativeTo(null);
     }
 
+    private void updateThemeButton() {
+        theme.setText("Theme: " + MODE_NAMES[List.of(MODES).indexOf(mode)]);
+    }
+
+    /** The theme dropdown: one entry per mode, with a check mark on the current one. */
+    private JPopupMenu themeMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        for (int i = 0; i < MODES.length; i++) {
+            String m = MODES[i];
+            JMenuItem item = new JMenuItem(MODE_NAMES[i], new Ui.Check(m.equals(mode)));
+            item.addActionListener(e -> setMode(m));
+            menu.add(item);
+        }
+        return menu;
+    }
+
     static String initialMode(Preferences prefs) {
         String saved = prefs.get("theme", null);
         if (saved != null) return saved;
@@ -125,14 +146,12 @@ public final class App {
         mode = newMode;
         prefs.put("theme", newMode);
         prefs.remove("dark");
-        matchSystem.setOn(newMode.equals("system"));
-        dark.setEnabled(!newMode.equals("system"));
+        updateThemeButton();
         applyTheme();
     }
 
     private void applyTheme() {
         Theme next = Theme.of(darkFor(mode));
-        dark.setOn(next.dark());
         if (next.equals(Ui.theme)) return;
         Ui.theme = next;
         Ui.installLookAndFeel();
