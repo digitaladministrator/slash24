@@ -18,6 +18,7 @@ fi
 
 [[ -f build/$APP.jar ]] || ./build.sh
 install -Dm644 "build/$APP.jar" "$DATA/$APP/$APP.jar"
+rm -f "$CACHE/app.jsa"   # the startup cache belongs to the previous jar
 install -Dm644 "packaging/$APP.svg" "$DATA/$APP/$APP.svg"
 mkdir -p "$BIN" "$DATA/applications"
 

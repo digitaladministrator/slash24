@@ -65,11 +65,69 @@ public final class SubnetTest {
             }
         }
 
+        vlsm();
+        csv();
+
         if (failures > 0) {
             System.err.println(failures + " of " + checks + " checks failed");
             System.exit(1);
         }
         System.out.println("All " + checks + " subnet checks passed");
+    }
+
+    private static void vlsm() {
+        String office = "Sales 60\nEngineering 28\n\nGuest Wi-Fi: 12\nManagement 5\nWAN link 2\n";
+        Vlsm.Plan plan = Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse(office), false);
+        eq("vlsm count", 5, plan.allocations().size());
+        String[] want = {"192.168.10.0/26", "192.168.10.64/27", "192.168.10.96/28", "192.168.10.112/29", "192.168.10.120/30"};
+        for (int i = 0; i < want.length; i++) {
+            Subnet s = plan.allocations().get(i).subnet();
+            eq("vlsm block " + i, want[i], format(s.network()) + "/" + s.prefix());
+        }
+        eq("vlsm name trimmed", "Guest Wi-Fi", plan.allocations().get(2).need().name());
+        eq("vlsm spare", 2L, plan.allocations().get(0).spare());
+        eq("vlsm used", 124L, plan.used());
+        eq("vlsm free", "[192.168.10.124/30, 192.168.10.128/25]", blocks(plan.free()));
+
+        plan = Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse(office), true);
+        eq("vlsm /31 link", 31, plan.allocations().get(4).subnet().prefix());
+        eq("vlsm /31 free", "[192.168.10.122/31, 192.168.10.124/30, 192.168.10.128/25]", blocks(plan.free()));
+
+        eq("vlsm unnamed", "Subnet 2", Vlsm.parse("10, 20; 30").get(1).name());
+        eq("vlsm sorts largest first", "B", Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("A 10\nB 100"), false)
+                .allocations().get(0).need().name());
+        eq("vlsm prefix 1 host", 30, Vlsm.prefixFor(1, false));
+        eq("vlsm prefix 1 host p2p", 32, Vlsm.prefixFor(1, true));
+        eq("vlsm prefix 254", 24, Vlsm.prefixFor(254, false));
+        eq("vlsm prefix 255", 23, Vlsm.prefixFor(255, false));
+        eq("vlsm whole space", 0, Vlsm.prefixFor(Vlsm.MAX_HOSTS, false));
+        eq("vlsm full fit", "[]", blocks(Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("126\n126"), false).free()));
+
+        for (String bad : new String[] {"", "Sales", "Sales 0", "x 99999999999"}) {
+            checks++;
+            try {
+                Vlsm.parse(bad);
+                fail("vlsm should reject \"" + bad + "\"");
+            } catch (IllegalArgumentException expected) {
+                // rejected as it should be
+            }
+        }
+        checks++;
+        try {
+            Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("200\n100"), false);
+            fail("vlsm should report a plan that does not fit");
+        } catch (IllegalArgumentException expected) {
+            // 256 + 128 addresses cannot fit in 256
+        }
+    }
+
+    private static void csv() {
+        eq("csv plain", "a,b,c\r\n", Csv.line("a", "b", "c"));
+        eq("csv quoting", "\"Lab, east\",\"say \"\"hi\"\"\",2\r\n", Csv.line("Lab, east", "say \"hi\"", "2"));
+    }
+
+    private static String blocks(java.util.List<Subnet> list) {
+        return list.stream().map(s -> format(s.network()) + "/" + s.prefix()).toList().toString();
     }
 
     private static void eq(String name, Object want, Object got) {

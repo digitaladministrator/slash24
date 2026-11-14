@@ -1,0 +1,644 @@
+package subnetcalc;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FileDialog;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Frame;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.Image;
+import java.awt.Insets;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.Window;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.Consumer;
+import javax.swing.AbstractButton;
+import javax.swing.Box;
+import javax.swing.ButtonModel;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
+import javax.swing.UIDefaults;
+import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
+import javax.swing.border.AbstractBorder;
+import javax.swing.border.CompoundBorder;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
+import javax.swing.border.MatteBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.plaf.BorderUIResource;
+import javax.swing.plaf.ColorUIResource;
+import javax.swing.plaf.ComponentUI;
+import javax.swing.plaf.FontUIResource;
+import javax.swing.plaf.InsetsUIResource;
+import javax.swing.plaf.UIResource;
+import javax.swing.plaf.basic.BasicButtonUI;
+import javax.swing.plaf.basic.BasicLookAndFeel;
+import javax.swing.plaf.basic.BasicScrollBarUI;
+import javax.swing.plaf.basic.BasicTextFieldUI;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumnModel;
+import javax.swing.text.JTextComponent;
+
+/** Shared look and feel, widgets and helpers. Everything paints from the current {@link #theme}. */
+public final class Ui {
+    private Ui() { }
+
+    static Theme theme;
+    static final Font SANS = new Font("Noto Sans", Font.PLAIN, 13);
+    static final Font MONO = new Font("Noto Sans Mono", Font.PLAIN, 13);
+    static final float ARC = 8;
+
+    static void installLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(new Laf());
+        } catch (UnsupportedLookAndFeelException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    // ---- small helpers -------------------------------------------------------------------------
+
+    static void invalid(JComponent c, boolean invalid) {
+        c.putClientProperty("invalid", invalid);
+        c.repaint();
+    }
+
+    static void status(JLabel label, String text, boolean error) {
+        label.setText(text);
+        label.setForeground(error ? theme.negative() : theme.dim());
+    }
+
+    /** A label in the secondary text colour, re-coloured whenever the theme changes. */
+    static JLabel dim(String text) {
+        JLabel label = new JLabel(text);
+        Consumer<JLabel> style = l -> l.setForeground(theme.dim());
+        style.accept(label);
+        label.addPropertyChangeListener("UI", e -> style.accept(label));
+        return label;
+    }
+
+    static JTextField valueField() {
+        JTextField f = new JTextField();
+        f.setEditable(false);
+        f.setBorder(new EmptyBorder(0, 0, 0, 0));
+        f.setFont(MONO);
+        return f;
+    }
+
+    static JPanel row(Component... parts) {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) p.add(Box.createHorizontalStrut(8));
+            p.add(parts[i]);
+        }
+        return p;
+    }
+
+    static JPanel footer(Component... buttons) {
+        JPanel p = row(buttons);
+        ((FlowLayout) p.getLayout()).setAlignment(FlowLayout.RIGHT);
+        p.setBorder(new EmptyBorder(12, 0, 0, 0));
+        return p;
+    }
+
+    static GridBagConstraints at(int x, int y, int width) {
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx = x;
+        c.gridy = y;
+        c.gridwidth = width;
+        c.anchor = GridBagConstraints.WEST;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.insets = new Insets(3, 0, 3, 14);
+        return c;
+    }
+
+    static GridBagConstraints wide(GridBagConstraints c) {
+        c.weightx = 1;
+        return c;
+    }
+
+    /** Constraints for a component that takes all remaining height. */
+    static GridBagConstraints fill(GridBagConstraints c) {
+        c.fill = GridBagConstraints.BOTH;
+        c.weightx = 1;
+        c.weighty = 1;
+        c.insets.right = 0;
+        return c;
+    }
+
+    static void onEdit(JTextComponent field, Runnable action) {
+        field.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { action.run(); }
+            @Override public void removeUpdate(DocumentEvent e) { action.run(); }
+            @Override public void changedUpdate(DocumentEvent e) { action.run(); }
+        });
+    }
+
+    /** Temporarily replaces a button's label, e.g. "Copied", then restores it. */
+    static void flash(AbstractButton b, String text) {
+        if (b.getClientProperty("label") == null) b.putClientProperty("label", b.getText());
+        b.setText(text);
+        Timer reset = new Timer(1500, e -> b.setText((String) b.getClientProperty("label")));
+        reset.setRepeats(false);
+        reset.start();
+    }
+
+    static Graphics2D smooth(Graphics g) {
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        if (Toolkit.getDefaultToolkit().getDesktopProperty("awt.font.desktophints") instanceof Map<?, ?> hints) {
+            g2.addRenderingHints(hints);
+        }
+        return g2;
+    }
+
+    static List<Image> icons() { return List.of(icon(16), icon(32), icon(48), icon(64)); }
+
+    private static Image icon(int size) {
+        BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setColor(theme.accent());
+        g.fill(new RoundRectangle2D.Float(size * .06f, size * .06f, size * .88f, size * .88f, size * .25f, size * .25f));
+        g.setColor(Color.WHITE);
+        g.setFont(SANS.deriveFont(Font.BOLD, size * .38f));
+        FontMetrics fm = g.getFontMetrics();
+        g.drawString("/24", (size - fm.stringWidth("/24")) / 2f, (size - fm.getHeight()) / 2f + fm.getAscent());
+        g.dispose();
+        return img;
+    }
+
+    private static final FocusListener REPAINT_ON_FOCUS = new FocusListener() {
+        @Override public void focusGained(FocusEvent e) { e.getComponent().repaint(); }
+        @Override public void focusLost(FocusEvent e) { e.getComponent().repaint(); }
+    };
+
+    // ---- tables and CSV export -----------------------------------------------------------------
+
+    /** Table model whose rows are computed on demand and can also be exported as CSV. */
+    abstract static class Rows extends AbstractTableModel {
+        private final String[] columns;
+
+        Rows(String... columns) { this.columns = columns; }
+
+        @Override public int getColumnCount() { return columns.length; }
+        @Override public String getColumnName(int column) { return columns[column]; }
+
+        boolean mono(int column) { return false; }
+        boolean numeric(int column) { return false; }
+        boolean secondary(int column) { return false; }
+
+        abstract String[] csvHeader();
+        abstract String[] csvRow(int row);
+        /** An unchanging copy that a background export can read while the user keeps editing. */
+        abstract Rows snapshot();
+    }
+
+    static JScrollPane table(Rows model, int... widths) {
+        JTable table = new JTable(model);
+        table.setDefaultRenderer(Object.class, new Cells());
+        table.getTableHeader().setDefaultRenderer(new HeaderCells());
+        table.getTableHeader().setReorderingAllowed(false);
+        table.setRowHeight(26);
+        table.setShowGrid(false);
+        table.setIntercellSpacing(new Dimension());
+        table.setFillsViewportHeight(true);
+        TableColumnModel columns = table.getColumnModel();
+        for (int i = 0; i < widths.length; i++) columns.getColumn(i).setPreferredWidth(widths[i]);
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setPreferredSize(new Dimension(0, 160)); // grows into the remaining height
+        return scroll;
+    }
+
+    /**
+     * Asks where to save (KDE's own dialog when kdialog is installed, otherwise the toolkit's) and
+     * writes the CSV on a background thread so large exports never freeze the window.
+     */
+    static void exportCsv(AbstractButton button, Rows model, String suggestedName) {
+        if (Boolean.TRUE.equals(button.getClientProperty("busy"))) return;
+        button.putClientProperty("busy", true);
+        Rows data = model.snapshot();
+        Window owner = SwingUtilities.getWindowAncestor(button);
+        Thread.ofVirtual().start(() -> {
+            String error = null;
+            boolean saved = false;
+            try {
+                Path path = askSavePath(owner, suggestedName);
+                if (path != null) {
+                    Csv.write(path, data);
+                    saved = true;
+                }
+            } catch (IOException | RuntimeException e) {
+                error = e.getMessage() != null ? e.getMessage() : e.toString();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            boolean ok = saved;
+            String problem = error;
+            SwingUtilities.invokeLater(() -> {
+                button.putClientProperty("busy", false);
+                if (ok) flash(button, "Saved");
+                if (problem != null) {
+                    JOptionPane.showMessageDialog(owner, "Could not export the CSV file:\n" + problem, "Export CSV",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        });
+    }
+
+    private static Path askSavePath(Window owner, String name) throws IOException, InterruptedException {
+        String home = System.getProperty("user.home");
+        if (onPath("kdialog")) {
+            Process p = new ProcessBuilder("kdialog", "--title", "Export CSV", "--getsavefilename",
+                    home + "/" + name, "*.csv|CSV files (*.csv)")
+                    .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+            return p.waitFor() == 0 && !out.isEmpty() ? withCsvExtension(Path.of(out)) : null;
+        }
+        String[] chosen = new String[1];
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                FileDialog d = new FileDialog((Frame) owner, "Export CSV", FileDialog.SAVE);
+                d.setDirectory(home);
+                d.setFile(name);
+                d.setVisible(true);
+                if (d.getFile() != null) chosen[0] = d.getDirectory() + d.getFile();
+            });
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            throw new IOException(e.getCause());
+        }
+        return chosen[0] == null ? null : withCsvExtension(Path.of(chosen[0]));
+    }
+
+    private static Path withCsvExtension(Path p) {
+        String n = p.getFileName().toString();
+        return n.toLowerCase(Locale.ROOT).endsWith(".csv") ? p : p.resolveSibling(n + ".csv");
+    }
+
+    private static boolean onPath(String command) {
+        String path = System.getenv("PATH");
+        if (path == null) return false;
+        for (String dir : path.split(":")) if (!dir.isEmpty() && Files.isExecutable(Path.of(dir, command))) return true;
+        return false;
+    }
+
+    static final class Cells extends DefaultTableCellRenderer {
+        private static final EmptyBorder PAD = new EmptyBorder(0, 10, 0, 10);
+
+        @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean selected, boolean focus, int row, int column) {
+            super.getTableCellRendererComponent(t, v, selected, false, row, column);
+            Rows m = (Rows) t.getModel();
+            int c = t.convertColumnIndexToModel(column);
+            setBorder(PAD);
+            setFont(m.mono(c) ? MONO : SANS);
+            setHorizontalAlignment(m.numeric(c) ? SwingConstants.RIGHT : SwingConstants.LEFT);
+            if (!selected) {
+                setBackground(row % 2 == 0 ? theme.view() : theme.alt());
+                setForeground(m.secondary(c) ? theme.dim() : theme.fg());
+            }
+            return this;
+        }
+    }
+
+    /** Header cells aligned like the column below them. */
+    static final class HeaderCells extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean selected, boolean focus, int row, int column) {
+            super.getTableCellRendererComponent(t, v, false, false, row, column);
+            setFont(SANS.deriveFont(Font.BOLD));
+            setForeground(theme.dim());
+            setBackground(theme.view());
+            setHorizontalAlignment(((Rows) t.getModel()).numeric(t.convertColumnIndexToModel(column))
+                    ? SwingConstants.RIGHT : SwingConstants.LEFT);
+            setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, theme.border()), new EmptyBorder(6, 10, 6, 10)));
+            return this;
+        }
+    }
+
+    /** A scroll pane drawn as a rounded input box, for multi-line text entry. */
+    static JScrollPane roundedScroll(JComponent view) {
+        view.setOpaque(false);
+        JScrollPane scroll = new JScrollPane(view) {
+            @Override public void updateUI() {
+                super.updateUI();
+                setOpaque(false);
+                setBorder(new Round());
+                if (getViewport() != null) getViewport().setOpaque(false);
+            }
+
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = smooth(g);
+                g2.setColor(theme.view());
+                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), ARC, ARC));
+                g2.dispose();
+            }
+        };
+        view.addFocusListener(new FocusListener() {
+            @Override public void focusGained(FocusEvent e) { scroll.repaint(); }
+            @Override public void focusLost(FocusEvent e) { scroll.repaint(); }
+        });
+        return scroll;
+    }
+
+    // ---- look and feel -------------------------------------------------------------------------
+
+    /** Basic look and feel with every colour, font and border taken from the current {@link Theme}. */
+    public static final class Laf extends BasicLookAndFeel {
+        @Override public String getName() { return "Subnet Calculator"; }
+        @Override public String getID() { return getName(); }
+        @Override public String getDescription() { return "Flat look matching the KDE colour scheme"; }
+        @Override public boolean isNativeLookAndFeel() { return false; }
+        @Override public boolean isSupportedLookAndFeel() { return true; }
+
+        @Override protected void initClassDefaults(UIDefaults d) {
+            super.initClassDefaults(d);
+            String p = Ui.class.getName() + '$';
+            d.put("ButtonUI", p + "FlatButtonUI");
+            d.put("ToggleButtonUI", p + "FlatButtonUI");
+            d.put("TextFieldUI", p + "FlatTextFieldUI");
+            d.put("ScrollBarUI", p + "FlatScrollBarUI");
+        }
+
+        @Override protected void initComponentDefaults(UIDefaults d) {
+            super.initComponentDefaults(d);
+            Theme t = theme;
+            ColorUIResource window = new ColorUIResource(t.window()), view = new ColorUIResource(t.view()),
+                    fg = new ColorUIResource(t.fg()), dim = new ColorUIResource(t.dim()),
+                    selection = new ColorUIResource(t.selection());
+            FontUIResource font = new FontUIResource(SANS);
+            for (Object key : d.keySet().toArray()) if (key instanceof String s && s.endsWith(".font")) d.put(key, font);
+            d.putDefaults(new Object[] {
+                "control", window, "window", view, "text", fg, "controlText", fg, "textText", fg,
+                "textHighlight", selection, "textHighlightText", fg, "info", view, "infoText", fg,
+                "Panel.background", window, "Panel.foreground", fg,
+                "Label.foreground", fg, "Label.disabledForeground", dim,
+                "Button.background", window, "Button.foreground", fg, "Button.disabledText", dim,
+                "ToggleButton.background", window, "ToggleButton.foreground", fg,
+                "OptionPane.background", window, "OptionPane.messageForeground", fg,
+                "TextField.background", view, "TextField.inactiveBackground", window, "TextField.foreground", fg,
+                "TextField.inactiveForeground", dim, "TextField.caretForeground", fg,
+                "TextField.selectionBackground", selection, "TextField.selectionForeground", fg,
+                "TextField.border", new Round(),
+                "TextArea.background", view, "TextArea.foreground", fg, "TextArea.caretForeground", fg,
+                "TextArea.selectionBackground", selection, "TextArea.selectionForeground", fg,
+                "TextArea.margin", new InsetsUIResource(0, 0, 0, 0),
+                "Table.background", view, "Table.foreground", fg, "Table.gridColor", new ColorUIResource(t.border()),
+                "Table.selectionBackground", selection, "Table.selectionForeground", fg,
+                "Table.focusCellHighlightBorder", new BorderUIResource.EmptyBorderUIResource(0, 0, 0, 0),
+                "TableHeader.background", view, "TableHeader.foreground", dim,
+                "ScrollPane.background", view, "Viewport.background", view,
+                "ScrollPane.border", new BorderUIResource(new LineBorder(t.border())),
+                "ScrollBar.width", 10, "ScrollBar.background", view, "ScrollBar.track", view, "ScrollBar.thumb", dim,
+                "ToolTip.background", view, "ToolTip.foreground", fg,
+                "ToolTip.border", new BorderUIResource(new CompoundBorder(new LineBorder(t.border()), new EmptyBorder(4, 6, 4, 6))),
+            });
+        }
+    }
+
+    /** Rounded input outline: accent when focused, the negative colour when the input is invalid. */
+    static final class Round extends AbstractBorder implements UIResource {
+        @Override public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = smooth(g);
+            boolean invalid = Boolean.TRUE.equals(((JComponent) c).getClientProperty("invalid"));
+            boolean focused = c.hasFocus()
+                    || c instanceof JScrollPane s && s.getViewport().getView() != null && s.getViewport().getView().hasFocus();
+            g2.setColor(invalid ? theme.negative() : focused ? theme.accent() : theme.border());
+            g2.draw(new RoundRectangle2D.Float(x + .5f, y + .5f, w - 1, h - 1, ARC, ARC));
+            g2.dispose();
+        }
+
+        @Override public Insets getBorderInsets(Component c, Insets insets) {
+            insets.set(6, 9, 6, 9);
+            return insets;
+        }
+    }
+
+    public static final class FlatTextFieldUI extends BasicTextFieldUI {
+        public static ComponentUI createUI(JComponent c) { return new FlatTextFieldUI(); }
+
+        @Override public void installUI(JComponent c) {
+            super.installUI(c);
+            c.setOpaque(false);
+            c.addFocusListener(REPAINT_ON_FOCUS);
+        }
+
+        @Override public void uninstallUI(JComponent c) {
+            c.removeFocusListener(REPAINT_ON_FOCUS);
+            super.uninstallUI(c);
+        }
+
+        @Override protected void paintSafely(Graphics g) {
+            JTextComponent c = getComponent();
+            if (c.isEditable()) {
+                Graphics2D g2 = smooth(g);
+                g2.setColor(c.getBackground());
+                g2.fill(new RoundRectangle2D.Float(0, 0, c.getWidth(), c.getHeight(), ARC, ARC));
+                g2.dispose();
+            }
+            super.paintSafely(g);
+        }
+    }
+
+    /** Flat rounded buttons; selected toggle buttons (the page tabs) are tinted with the accent. */
+    public static final class FlatButtonUI extends BasicButtonUI {
+        public static ComponentUI createUI(JComponent c) { return new FlatButtonUI(); }
+
+        @Override protected void installDefaults(AbstractButton b) {
+            super.installDefaults(b);
+            b.setOpaque(false);
+            b.setRolloverEnabled(true);
+            b.setBorder(new BorderUIResource.EmptyBorderUIResource(7, 16, 7, 16));
+        }
+
+        @Override public void paint(Graphics g, JComponent c) {
+            AbstractButton b = (AbstractButton) c;
+            ButtonModel m = b.getModel();
+            Color base = m.isSelected() ? Theme.mix(theme.window(), theme.accent(), .3f) : theme.window();
+            float tint = !b.isEnabled() ? .05f : m.isPressed() ? .24f : m.isRollover() ? .16f : .1f;
+            Graphics2D g2 = smooth(g);
+            RoundRectangle2D shape = new RoundRectangle2D.Float(.5f, .5f, c.getWidth() - 1, c.getHeight() - 1, ARC, ARC);
+            g2.setColor(Theme.mix(base, theme.fg(), tint));
+            g2.fill(shape);
+            g2.setColor(b.isFocusOwner() || m.isSelected() ? theme.accent() : theme.border());
+            g2.draw(shape);
+            g2.dispose();
+            super.paint(g, c);
+        }
+
+        @Override protected void paintFocus(Graphics g, AbstractButton b, Rectangle v, Rectangle t, Rectangle i) { }
+        @Override protected void paintButtonPressed(Graphics g, AbstractButton b) { }
+    }
+
+    public static final class FlatScrollBarUI extends BasicScrollBarUI {
+        public static ComponentUI createUI(JComponent c) { return new FlatScrollBarUI(); }
+
+        @Override protected JButton createDecreaseButton(int orientation) { return noButton(); }
+        @Override protected JButton createIncreaseButton(int orientation) { return noButton(); }
+
+        private static JButton noButton() {
+            JButton b = new JButton();
+            b.setPreferredSize(new Dimension());
+            b.setMinimumSize(new Dimension());
+            b.setMaximumSize(new Dimension());
+            return b;
+        }
+
+        @Override protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
+            g.setColor(theme.view());
+            g.fillRect(r.x, r.y, r.width, r.height);
+        }
+
+        @Override protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
+            if (r.isEmpty()) return;
+            Graphics2D g2 = smooth(g);
+            g2.setColor(isThumbRollover() || isDragging ? theme.dim() : Theme.mix(theme.view(), theme.dim(), .55f));
+            g2.fill(new RoundRectangle2D.Float(r.x + 2, r.y + 2, r.width - 4, r.height - 4, 6, 6));
+            g2.dispose();
+        }
+    }
+
+    // ---- custom components ---------------------------------------------------------------------
+
+    /** Breeze-style on/off switch. */
+    static final class Switch extends JComponent {
+        private boolean on;
+        private final Consumer<Boolean> action;
+
+        Switch(boolean on, String tooltip, Consumer<Boolean> action) {
+            this.on = on;
+            this.action = action;
+            setFocusable(true);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText(tooltip);
+            addFocusListener(REPAINT_ON_FOCUS);
+            addMouseListener(new MouseAdapter() {
+                @Override public void mousePressed(MouseEvent e) {
+                    requestFocusInWindow();
+                    toggle();
+                }
+            });
+            addKeyListener(new KeyAdapter() {
+                @Override public void keyPressed(KeyEvent e) {
+                    if (e.getKeyCode() == KeyEvent.VK_SPACE || e.getKeyCode() == KeyEvent.VK_ENTER) toggle();
+                }
+            });
+        }
+
+        boolean isOn() { return on; }
+
+        void toggle() {
+            on = !on;
+            action.accept(on);
+            repaint();
+        }
+
+        /** A clickable label that toggles this switch. */
+        JLabel label(String text) {
+            JLabel l = dim(text);
+            l.addMouseListener(new MouseAdapter() {
+                @Override public void mouseClicked(MouseEvent e) { toggle(); }
+            });
+            return l;
+        }
+
+        @Override public Dimension getPreferredSize() { return new Dimension(40, 22); }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = smooth(g);
+            int w = getWidth(), h = getHeight(), d = h - 6;
+            g2.setColor(on ? theme.accent() : Theme.mix(theme.window(), theme.fg(), .3f));
+            g2.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
+            if (isFocusOwner()) {
+                g2.setColor(theme.fg());
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.draw(new RoundRectangle2D.Float(.75f, .75f, w - 1.5f, h - 1.5f, h, h));
+            }
+            g2.setColor(Color.WHITE);
+            g2.fillOval(on ? w - d - 3 : 3, 3, d, d);
+            g2.dispose();
+        }
+    }
+
+    /** 32 bits in dotted groups of eight, with the network part in the accent colour. */
+    static final class Bits extends JComponent {
+        private int value, prefix;
+        private boolean valid;
+
+        Bits() { setFont(MONO); }
+
+        void set(int value, int prefix, boolean valid) {
+            this.value = value;
+            this.prefix = prefix;
+            this.valid = valid;
+            repaint();
+        }
+
+        @Override public Dimension getPreferredSize() {
+            FontMetrics fm = getFontMetrics(getFont());
+            return new Dimension(fm.charWidth('0') * 35, fm.getHeight() + 4);
+        }
+
+        @Override public Dimension getMinimumSize() { return getPreferredSize(); }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = smooth(g);
+            g2.setFont(getFont());
+            FontMetrics fm = g2.getFontMetrics();
+            int cw = fm.charWidth('0'), y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent(), x = 0;
+            if (!valid) {
+                g2.setColor(theme.fg());
+                g2.drawString("—", 0, y);
+            } else {
+                char[] digit = new char[1];
+                for (int i = 0; i < 32; i++) {
+                    if (i > 0 && i % 8 == 0) {
+                        g2.setColor(theme.dim());
+                        g2.drawString(".", x, y);
+                        x += cw;
+                    }
+                    g2.setColor(i < prefix ? theme.accent() : theme.fg());
+                    digit[0] = (value >>> (31 - i) & 1) == 1 ? '1' : '0';
+                    g2.drawChars(digit, 0, 1, x, y);
+                    x += cw;
+                }
+            }
+            g2.dispose();
+        }
+    }
+}
