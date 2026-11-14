@@ -101,12 +101,21 @@ that setting out of the config, and "auto" picks a value for you.
 
 ## Install
 
-Download from the latest [GitHub release](../../releases). Everything includes its own Java runtime.
+**Fedora / RHEL / Rocky / Alma:** one command installs the latest version for all users:
+
+```sh
+sudo dnf install https://github.com/digitaladministrator/slash24/releases/latest/download/slash24.x86_64.rpm
+```
+
+Run the same command again to update, and `sudo dnf remove slash24` to uninstall.
+
+Other systems: download from the latest [GitHub release](../../releases). Everything includes its own
+Java runtime.
 
 **Windows:** run `Slash24-<version>-windows-x64.msi` (Start menu entry, optional desktop shortcut,
 upgrades in place), or unzip `Slash24-<version>-windows-x64.zip` anywhere and run `Slash24.exe`.
 
-**Linux:** put the Linux files in one folder and run:
+**Any Linux:** put the Linux files in one folder and run:
 
 ```sh
 ./install.sh              # Fedora/RHEL family: system-wide RPM; any other Linux: just for you

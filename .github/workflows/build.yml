@@ -69,6 +69,9 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Version-free RPM name for the README's always-latest dnf command
+        working-directory: artifacts
+        run: cp slash24-*.x86_64.rpm slash24.x86_64.rpm
       - name: Checksums for every download
         working-directory: artifacts
         run: sha256sum *.rpm *.tar.gz *.msi *.zip > SHA256SUMS
