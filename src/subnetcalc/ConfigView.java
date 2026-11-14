@@ -51,11 +51,17 @@ final class ConfigView implements Page {
     private final Choice device;
     private IosConfig.Result result;
 
+    private static final String[] PORT_TYPES = {"FastEthernet", "GigabitEthernet"};
+
     // controls whose state decides which rows are visible
-    private final Choice design, nat;
+    private final Choice routing, switchKind, nat;
     private final Ui.Switch links, dhcp, ospf, uplink;
-    private final List<JComponent> switchOnly = new ArrayList<>(), linkRows = new ArrayList<>(), dhcpRows = new ArrayList<>(),
-            ospfRows = new ArrayList<>(), uplinkRows = new ArrayList<>(), poolRows = new ArrayList<>(), natRows = new ArrayList<>();
+    private final List<JComponent> switchOnly = new ArrayList<>(), routerRoutingRows = new ArrayList<>(),
+            uplinkPortRows = new ArrayList<>(), stickRows = new ArrayList<>(), layer2Rows = new ArrayList<>(),
+            linkRows = new ArrayList<>(), dhcpRows = new ArrayList<>(), ospfRows = new ArrayList<>(),
+            uplinkRows = new ArrayList<>(), poolRows = new ArrayList<>(), natRows = new ArrayList<>();
+    private final JLabel lanPortLabel, uplinkPortLabel;
+    private final AccessForm routerAccess, switchAccess;
     private final JTextField routerName;
 
     ConfigView(Preferences prefs, VlsmView vlsm, Runnable editPlan) {
@@ -63,18 +69,33 @@ final class ConfigView implements Page {
         this.vlsm = vlsm;
         IosConfig.Options d = new IosConfig.Options();
 
-        section("Devices", null);
-        routerName = text("routerName", d.routerName, 12, v -> options.routerName = v);
-        row("Router hostname", routerName, null);
-        row("Switch hostname", text("switchName", d.switchName, 12, v -> options.switchName = v), switchOnly);
+        int oldDesign = prefs.getInt("ios.design", 0); // 1.3.0 had a single "LAN design" choice
 
-        section("Interfaces", null);
-        row("Port type", choice("interfaceType", new String[] {"FastEthernet", "GigabitEthernet"}, 1,
-                i -> options.interfaceType = i == 0 ? "FastEthernet" : "GigabitEthernet"), null);
-        row("Numbering", choice("numbering", new String[] {"0/0", "0/0/0"}, 0, i -> options.threeLevelNumbering = i == 1), null);
-        design = choice("design", new String[] {"Router on a stick", "Port per subnet", "Layer 3 switch"}, 0,
-                i -> options.design = IosConfig.Design.values()[i]);
-        wideRow("LAN design", design, null);
+        section("Router", null);
+        routerName = text("routerName", d.routerName, 12, v -> options.routerName = v);
+        row("Hostname", routerName, null);
+        row("Port type", choice("interfaceType", PORT_TYPES, 1, i -> options.routerPortType = PORT_TYPES[i]), null);
+        row("Numbering", choice("numbering", new String[] {"0/0", "0/0/0"}, 0, i -> options.routerThreeLevel = i == 1), null);
+        routing = choice("routing", new String[] {"Router on a stick", "Port per subnet"}, oldDesign == 1 ? 1 : 0,
+                i -> options.routing = IosConfig.Routing.values()[i]);
+        wideRow("Inter-VLAN routing", routing, routerRoutingRows);
+        lanPortLabel = row("Trunk port", text("lanPort", d.lanPort, 18, v -> options.lanPort = v), null).label();
+
+        section("Switch", null);
+        switchKind = choice("switchKind", new String[] {"None", "Layer 2", "Layer 3"}, oldDesign == 2 ? 2 : 1,
+                i -> options.switchKind = IosConfig.SwitchKind.values()[i]);
+        row("Switch", switchKind, null);
+        row("Hostname", text("switchName", d.switchName, 12, v -> options.switchName = v), switchOnly);
+        row("Port type", choice("switchPortType", PORT_TYPES, 0, i -> options.switchPortType = PORT_TYPES[i]), switchOnly);
+        row("Numbering", choice("switchNumbering", new String[] {"0/1", "1/0/1"}, 0, i -> options.switchStacked = i == 1), switchOnly);
+        uplinkPortLabel = row("Trunk port", text("uplinkPort", d.uplinkPort, 18, v -> options.uplinkPort = v), uplinkPortRows).label();
+        row("First VLAN ID", number("vlanStart", d.vlanStart, "First VLAN ID", null, v -> options.vlanStart = v), switchOnly);
+        row("VLAN ID step", number("vlanStep", d.vlanStep, "VLAN ID step", null, v -> options.vlanStep = v), switchOnly);
+        row("Native VLAN", number("nativeVlan", 0, "Native VLAN", 0, v -> options.nativeVlan = v), stickRows);
+        row("Access ports per VLAN", number("accessPorts", d.accessPorts, "Access ports per VLAN", null,
+                v -> options.accessPorts = v), switchOnly);
+        row("Management VLAN", text("mgmtVlan", d.mgmtVlan, 8, v -> options.mgmtVlan = v), layer2Rows);
+        row("Management address", text("mgmtAddress", d.mgmtAddress, 16, v -> options.mgmtAddress = v), layer2Rows);
 
         section("Addressing", null);
         row("Gateway", choice("gateway", new String[] {"First usable", "Last usable"}, 0, i -> options.gatewayLast = i == 1), null);
@@ -83,27 +104,19 @@ final class ConfigView implements Page {
         row("1–2 host subnets are links", Ui.row(links), null);
         row("Link interface", text("linkInterface", d.linkInterface, 18, v -> options.linkInterface = v), linkRows);
 
-        section("VLANs and switch", switchOnly);
-        row("First VLAN ID", number("vlanStart", d.vlanStart, "First VLAN ID", false, v -> options.vlanStart = v), switchOnly);
-        row("VLAN ID step", number("vlanStep", d.vlanStep, "VLAN ID step", false, v -> options.vlanStep = v), switchOnly);
-        row("Native VLAN", number("nativeVlan", 0, "Native VLAN", true, v -> options.nativeVlan = v), switchOnly);
-        row("Access ports per VLAN", number("accessPorts", d.accessPorts, "Access ports per VLAN", false, v -> options.accessPorts = v), switchOnly);
-        row("Access port prefix", text("accessPortPrefix", d.accessPortPrefix, 18, v -> options.accessPortPrefix = v), switchOnly);
-        row("Switch uplink port", text("uplinkPort", d.uplinkPort, 18, v -> options.uplinkPort = v), switchOnly);
-
         section("DHCP", null);
         dhcp = toggle("dhcp", d.dhcp, "Create a DHCP pool for every LAN, with the gateway excluded", v -> options.dhcp = v);
         row("DHCP pools", Ui.row(dhcp), null);
         row("DNS server", text("dns", d.dnsServer, 14, v -> options.dnsServer = v), dhcpRows);
         row("Domain name", text("domain", d.domainName, 14, v -> options.domainName = v), dhcpRows);
-        row("Keep for static devices", number("reserved", d.reserved, "Addresses to keep for static devices", true,
+        row("Keep for static devices", number("reserved", d.reserved, "Addresses to keep for static devices", 0,
                 v -> options.reserved = v), dhcpRows);
 
         section("Routing", null);
         ospf = toggle("ospf", d.ospf, "Advertise every subnet with OSPF", v -> options.ospf = v);
         row("OSPF", Ui.row(ospf), null);
-        row("Process ID", number("ospfProcess", d.ospfProcess, "OSPF process ID", false, v -> options.ospfProcess = v), ospfRows);
-        row("Area", number("ospfArea", d.ospfArea, "OSPF area", false, v -> options.ospfArea = v), ospfRows);
+        row("Process ID", number("ospfProcess", d.ospfProcess, "OSPF process ID", null, v -> options.ospfProcess = v), ospfRows);
+        row("Area", number("ospfArea", d.ospfArea, "OSPF area", null, v -> options.ospfArea = v), ospfRows);
         row("Router ID", text("routerId", d.routerId, 14, v -> options.routerId = v), ospfRows);
         Ui.Switch passive = toggle("passive", d.passive, "Don't send OSPF hellos out of LAN interfaces", v -> options.passive = v);
         row("Passive LAN interfaces", Ui.row(passive), ospfRows);
@@ -120,12 +133,15 @@ final class ConfigView implements Page {
         row("NAT", nat, uplinkRows);
         row("Pool start", text("poolStart", d.poolStart, 14, v -> options.poolStart = v), poolRows);
         row("Pool end", text("poolEnd", d.poolEnd, 14, v -> options.poolEnd = v), poolRows);
-        row("Pool prefix", number("poolPrefix", d.poolPrefix, "NAT pool prefix", false, v -> options.poolPrefix = v), poolRows);
+        row("Pool prefix", number("poolPrefix", d.poolPrefix, "NAT pool prefix", null, v -> options.poolPrefix = v), poolRows);
         Ui.Switch overload = toggle("poolOverload", d.poolOverload, "Share pool addresses between hosts (PAT on the pool)",
                 v -> options.poolOverload = v);
         row("Overload the pool", Ui.row(overload), poolRows);
         wideRow("Static NAT: \"inside outside\" or \"tcp inside port outside port\"", area("staticNat", d.staticNat, 2,
                 v -> options.staticNat = v), natRows);
+
+        routerAccess = new AccessForm("Router security and access", "router", () -> options.routerAccess);
+        switchAccess = new AccessForm("Switch security and access", "switch", () -> options.switchAccess);
 
         section("Output", null);
         row("enable … write memory", Ui.row(toggle("wrap", d.wrap, "Start with enable / configure terminal and end with write memory",
@@ -193,8 +209,17 @@ final class ConfigView implements Page {
     }
 
     @Override public void refresh() {
-        boolean perPort = design.selected() == 1;
-        switchOnly.forEach(c -> c.setVisible(!perPort));
+        int kind = switchKind.selected();
+        boolean hasSwitch = kind != 0, layer3 = kind == 2, stick = !layer3 && routing.selected() == 0;
+        routerRoutingRows.forEach(c -> c.setVisible(!layer3));
+        lanPortLabel.setText(layer3 ? "Port to switch" : stick ? "Trunk port" : "First LAN port");
+        switchOnly.forEach(c -> c.setVisible(hasSwitch));
+        uplinkPortRows.forEach(c -> c.setVisible(hasSwitch && (layer3 || stick)));
+        uplinkPortLabel.setText(layer3 ? "Routed port to router" : "Trunk port");
+        stickRows.forEach(c -> c.setVisible(hasSwitch && stick));
+        layer2Rows.forEach(c -> c.setVisible(kind == 1));
+        routerAccess.update(true);
+        switchAccess.update(hasSwitch);
         linkRows.forEach(c -> c.setVisible(links.isOn()));
         dhcpRows.forEach(c -> c.setVisible(dhcp.isOn()));
         ospfRows.forEach(c -> c.setVisible(ospf.isOn()));
@@ -257,17 +282,23 @@ final class ConfigView implements Page {
         if (group != null) group.add(l);
     }
 
-    private void row(String label, JComponent control, List<JComponent> group) {
+    record Row(JLabel label, JComponent control) {
+        void addTo(List<JComponent> group) {
+            group.add(label);
+            group.add(control);
+        }
+    }
+
+    private Row row(String label, JComponent control, List<JComponent> group) {
         JLabel l = dim(label);
         form.add(l, at(0, formRow, 1));
         GridBagConstraints c = Ui.wide(at(1, formRow++, 1));
         c.insets.right = 0;
         c.fill = GridBagConstraints.NONE;
         form.add(control, c);
-        if (group != null) {
-            group.add(l);
-            group.add(control);
-        }
+        Row row = new Row(l, control);
+        if (group != null) row.addTo(group);
+        return row;
     }
 
     /** A label on its own line with the control below, for controls too wide for two columns. */
@@ -294,18 +325,65 @@ final class ConfigView implements Page {
         return f;
     }
 
-    private JTextField number(String key, int fallback, String what, boolean blankIsZero, IntConsumer set) {
-        JTextField f = text(key, blankIsZero && fallback == 0 ? "" : String.valueOf(fallback), 6, v -> { });
+    /** A whole-number field; when {@code blankValue} is not null an empty field means that value. */
+    private JTextField number(String key, int fallback, String what, Integer blankValue, IntConsumer set) {
+        JTextField f = text(key, blankValue != null && fallback == blankValue ? "" : String.valueOf(fallback), 6, v -> { });
         apply.add(() -> {
             String t = f.getText().strip();
-            if (t.isEmpty() && blankIsZero) {
-                set.accept(0);
+            if (t.isEmpty() && blankValue != null) {
+                set.accept(blankValue);
                 return;
             }
             if (!t.matches("\\d{1,6}")) throw new IllegalArgumentException(what + " must be a whole number");
             set.accept(Integer.parseInt(t));
         });
         return f;
+    }
+
+    /** A password field. Its value is deliberately not saved: Java preferences are stored as plain text. */
+    private JTextField secret(Consumer<String> set) {
+        JTextField f = new JTextField(14);
+        f.setFont(Ui.MONO);
+        f.setToolTipText("Not saved between runs");
+        apply.add(() -> set.accept(f.getText()));
+        Ui.onEdit(f, this::refresh);
+        return f;
+    }
+
+    /** Passwords, local user, Telnet/SSH and line settings for one device. */
+    private final class AccessForm {
+        private final Choice remote;
+        private final List<JComponent> all = new ArrayList<>(), vty = new ArrayList<>(), ssh = new ArrayList<>(),
+                lines = new ArrayList<>();
+
+        AccessForm(String title, String key, java.util.function.Supplier<IosConfig.Access> target) {
+            IosConfig.Access d = new IosConfig.Access();
+            section(title, all);
+            row("Enable secret", secret(v -> target.get().enableSecret = v), all);
+            row("Console password", secret(v -> target.get().consolePassword = v), all);
+            row("Local username", text(key + ".username", d.username, 14, v -> target.get().username = v), all);
+            row("Local user password", secret(v -> target.get().userPassword = v), all);
+            remote = choice(key + ".remote", new String[] {"Off", "Telnet", "SSH", "Both"}, 0,
+                    i -> target.get().remote = IosConfig.Remote.values()[i]);
+            row("Remote access", remote, all);
+            row("VTY password", secret(v -> target.get().vtyPassword = v), vty);
+            row("SSH domain", text(key + ".sshDomain", d.sshDomain, 14, v -> target.get().sshDomain = v), ssh);
+            row("RSA key size", choice(key + ".keyBits", new String[] {"1024", "2048"}, 1,
+                    i -> target.get().keyBits = i == 0 ? 1024 : 2048), ssh);
+            row("VTY lines", choice(key + ".allVty", new String[] {"0–4", "0–15"}, 0, i -> target.get().allVty = i == 1), lines);
+            row("Idle timeout (minutes)", number(key + ".timeout", d.timeout, "Idle timeout", -1, v -> target.get().timeout = v), all);
+            row("Encrypt passwords", Ui.row(toggle(key + ".encrypt", d.encrypt, "service password-encryption",
+                    v -> target.get().encrypt = v)), all);
+            row("Banner (MOTD)", text(key + ".banner", d.banner, 18, v -> target.get().banner = v), all);
+        }
+
+        void update(boolean shown) {
+            int r = remote.selected();
+            all.forEach(c -> c.setVisible(shown));
+            vty.forEach(c -> c.setVisible(shown && (r == 1 || r == 3)));
+            ssh.forEach(c -> c.setVisible(shown && r >= 2));
+            lines.forEach(c -> c.setVisible(shown && r != 0));
+        }
     }
 
     private JScrollPane area(String key, String fallback, int rows, Consumer<String> set) {

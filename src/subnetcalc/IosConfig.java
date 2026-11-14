@@ -14,22 +14,51 @@ import java.util.regex.Pattern;
 final class IosConfig {
     private IosConfig() { }
 
-    enum Design { ROUTER_ON_A_STICK, PORT_PER_SUBNET, LAYER3_SWITCH }
+    /** What the switch is: absent, a plain access switch, or one that routes between VLANs itself. */
+    enum SwitchKind { NONE, LAYER2, LAYER3 }
+
+    /** How the router routes between VLANs when the switch doesn't. */
+    enum Routing { ROUTER_ON_A_STICK, PORT_PER_SUBNET }
 
     enum Nat { OFF, PAT, POOL }
 
-    /** Every generator setting, with lab-friendly defaults. "auto" picks the next free router port. */
+    enum Remote { OFF, TELNET, SSH, BOTH }
+
+    /** Login, password and remote-access settings for one device. Empty strings mean "leave unset". */
+    static final class Access {
+        String enableSecret = "", consolePassword = "", username = "", userPassword = "", vtyPassword = "";
+        Remote remote = Remote.OFF;
+        String sshDomain = "lab.local";
+        int keyBits = 2048;
+        boolean allVty;
+        /** Minutes of idle time before a session is closed; 0 = never, -1 = leave the default. */
+        int timeout = -1;
+        boolean encrypt = true;
+        String banner = "";
+    }
+
+    /** Every generator setting, with lab-friendly defaults. "auto" picks the next free port. */
     static final class Options {
-        String routerName = "R1", switchName = "S1";
-        String interfaceType = "GigabitEthernet";
-        boolean threeLevelNumbering;
-        Design design = Design.ROUTER_ON_A_STICK;
+        // router
+        String routerName = "R1";
+        String routerPortType = "GigabitEthernet";
+        boolean routerThreeLevel;
+        Routing routing = Routing.ROUTER_ON_A_STICK;
+        String lanPort = "auto";
+        // switch
+        SwitchKind switchKind = SwitchKind.LAYER2;
+        String switchName = "S1";
+        String switchPortType = "FastEthernet";
+        boolean switchStacked;
+        String uplinkPort = "auto";
+        int vlanStart = 10, vlanStep = 10, nativeVlan;
+        int accessPorts = 2;
+        String mgmtVlan = "auto", mgmtAddress = "auto";
+        // addressing
         boolean gatewayLast;
         boolean smallSubnetsAreLinks = true;
         String linkInterface = "auto";
-        int vlanStart = 10, vlanStep = 10, nativeVlan;
-        int accessPorts = 2;
-        String accessPortPrefix = "FastEthernet0/", uplinkPort = "GigabitEthernet0/1";
+        // services
         boolean dhcp = true;
         String dnsServer = "8.8.8.8", domainName = "";
         int reserved;
@@ -45,73 +74,132 @@ final class IosConfig {
         int poolPrefix = 24;
         boolean poolOverload = true;
         String staticNat = "";
+        // security
+        Access routerAccess = new Access(), switchAccess = new Access();
+        // output
         boolean wrap = true, extras = true, comments = true;
     }
 
-    /** {@code switchConfig} is null when the design needs no switch configuration. */
+    /** {@code switchConfig} is null when there is no switch to configure. */
     record Result(String router, String switchConfig) { }
 
     private static final Pattern HOSTNAME = Pattern.compile("[A-Za-z][A-Za-z0-9-]{0,62}");
     private static final Pattern INTERFACE = Pattern.compile("[A-Za-z][A-Za-z-]*\\d+(/\\d+)*");
-    private static final Pattern PORT_PREFIX = Pattern.compile("[A-Za-z][A-Za-z-]*(\\d+/)+");
     private static final Pattern DOMAIN = Pattern.compile("[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*");
     private static final Pattern TRAILING_NUMBER = Pattern.compile("(.*?)(\\d+)$");
+    private static final Pattern USERNAME = Pattern.compile("[A-Za-z0-9_.@-]{1,32}");
+    /** No spaces (they split the command) and no '?' (it triggers CLI help when pasted). */
+    private static final Pattern PASSWORD = Pattern.compile("[^\\s?]{1,64}");
 
     static Result generate(Vlsm.Plan plan, Options o) {
         return new Generator(plan, o).run();
     }
 
-    /** One run of the generator; holds the parsed settings and the interface allocation. */
+    /** One run of the generator; holds the parsed settings and the port allocation. */
     private static final class Generator {
         private final Vlsm.Plan plan;
         private final Options o;
+        private final boolean layer3, stick, hasSwitch;
         private final List<Vlsm.Allocation> lans = new ArrayList<>(), links = new ArrayList<>();
         private final List<String> lanNames = new ArrayList<>();
         private final List<Integer> vlans = new ArrayList<>();
+        private final List<String> lanPorts = new ArrayList<>(), linkPorts = new ArrayList<>();
+        private final Set<String> usedPorts = new HashSet<>();
         private Vlsm.Allocation transit;
-        private String uplinkPortName;
+        private String uplinkName, switchUplink;
+        private int mgmtIndex = -1, mgmtIp;
         private int nextPort;
 
         Generator(Vlsm.Plan plan, Options o) {
             this.plan = plan;
             this.o = o;
+            layer3 = o.switchKind == SwitchKind.LAYER3;
+            hasSwitch = o.switchKind != SwitchKind.NONE;
+            stick = !layer3 && o.routing == Routing.ROUTER_ON_A_STICK;
         }
 
         Result run() {
             check(HOSTNAME.matcher(o.routerName).matches(), "Router hostname must start with a letter and use only letters, digits and hyphens");
-            if (o.design != Design.PORT_PER_SUBNET) {
+            if (hasSwitch) {
                 check(HOSTNAME.matcher(o.switchName).matches(), "Switch hostname must start with a letter and use only letters, digits and hyphens");
             }
+            check(hasSwitch || !stick, "Router on a stick needs a switch to trunk to: choose a switch, or a port per subnet");
             for (Vlsm.Allocation a : plan.allocations()) {
                 (o.smallSubnetsAreLinks && a.need().hosts() <= 2 ? links : lans).add(a);
             }
-            if (o.design == Design.LAYER3_SWITCH) {
-                check(!links.isEmpty(), "The layer 3 switch design needs a 2-host link in the plan (for example \"Core link 2\") "
-                        + "to connect the switch to the router, with 1–2 host subnets treated as links");
+            if (layer3) {
+                check(!links.isEmpty(), "A layer 3 switch needs a 2-host link in the plan (for example \"Core link 2\") "
+                        + "to connect it to the router, with 1–2 host subnets treated as links");
                 transit = links.removeFirst();
             }
-            if (o.design != Design.PORT_PER_SUBNET) {
-                check(!lans.isEmpty(), "The plan has no LAN subnets to put in VLANs");
-                check(o.nativeVlan >= 0 && o.nativeVlan <= 4094, "Native VLAN must be between 1 and 4094, or empty");
-                check(o.accessPorts >= 0 && o.accessPorts <= 48, "Access ports per VLAN must be between 0 and 48");
-                check(INTERFACE.matcher(o.uplinkPort).matches(), "Switch uplink port must be an interface name like GigabitEthernet0/1");
-                if (o.accessPorts > 0) {
-                    check(PORT_PREFIX.matcher(o.accessPortPrefix).matches(), "Access port prefix must look like FastEthernet0/");
-                }
-                Set<String> names = new HashSet<>();
-                for (int i = 0; i < lans.size(); i++) {
-                    int vlan = o.vlanStart + i * o.vlanStep;
-                    check(o.vlanStep > 0, "VLAN step must be at least 1");
-                    check(vlan >= 2 && vlan <= 4094 && (vlan < 1002 || vlan > 1005),
-                            "VLAN " + vlan + " is not usable: choose IDs from 2 to 1001 or 1006 to 4094");
-                    check(vlan != o.nativeVlan, "VLAN " + vlan + " is also the native VLAN");
-                    vlans.add(vlan);
-                    lanNames.add(unique(name(lans.get(i).need().name(), "VLAN" + vlan), names));
-                }
-            } else {
-                Set<String> names = new HashSet<>();
-                for (Vlsm.Allocation a : lans) lanNames.add(unique(name(a.need().name(), "LAN"), names));
+            names();
+            if (hasSwitch) switchSettings();
+            services();
+            access(o.routerAccess, "Router");
+            if (hasSwitch) access(o.switchAccess, "Switch");
+            ports();
+            return new Result(routerConfig(), hasSwitch ? switchConfig() : null);
+        }
+
+        private void names() {
+            Set<String> used = new HashSet<>();
+            if (!hasSwitch) {
+                for (Vlsm.Allocation a : lans) lanNames.add(unique(name(a.need().name(), "LAN"), used));
+                return;
             }
+            check(!lans.isEmpty(), "The plan has no LAN subnets to put in VLANs");
+            check(o.vlanStep > 0, "VLAN ID step must be at least 1");
+            check(o.nativeVlan >= 0 && o.nativeVlan <= 4094, "Native VLAN must be between 1 and 4094, or empty");
+            for (int i = 0; i < lans.size(); i++) {
+                int vlan = o.vlanStart + i * o.vlanStep;
+                check(vlan >= 2 && vlan <= 4094 && (vlan < 1002 || vlan > 1005),
+                        "VLAN " + vlan + " is not usable: choose IDs from 2 to 1001 or 1006 to 4094");
+                check(vlan != o.nativeVlan, "VLAN " + vlan + " is also the native VLAN");
+                vlans.add(vlan);
+                lanNames.add(unique(name(lans.get(i).need().name(), "VLAN" + vlan), used));
+            }
+        }
+
+        private void switchSettings() {
+            check(o.accessPorts >= 0 && o.accessPorts <= 48, "Access ports per VLAN must be between 0 and 48");
+            switchUplink = isAuto(o.uplinkPort)
+                    ? (o.switchStacked ? "GigabitEthernet1/1/1" : "GigabitEthernet0/1")
+                    : numbered(o.uplinkPort, 0, "Switch uplink port");
+            String prefix = accessPrefix();
+            int lastAccess = o.accessPorts * lans.size();
+            if (needsSwitchUplink() && switchUplink.startsWith(prefix)) {
+                String rest = switchUplink.substring(prefix.length());
+                check(!rest.matches("\\d+") || Integer.parseInt(rest) > lastAccess,
+                        "Switch uplink port " + switchUplink + " is also one of the access ports");
+            }
+            if (o.switchKind == SwitchKind.LAYER2) {
+                if (isAuto(o.mgmtVlan)) {
+                    mgmtIndex = 0;
+                    for (int i = 0; i < lanNames.size(); i++) if (lanNames.get(i).contains("MANAG")) mgmtIndex = i;
+                } else {
+                    check(o.mgmtVlan.strip().matches("\\d{1,4}") && vlans.contains(Integer.parseInt(o.mgmtVlan.strip())),
+                            "Management VLAN must be one of the plan's VLAN IDs " + vlans + ", or auto");
+                    mgmtIndex = vlans.indexOf(Integer.parseInt(o.mgmtVlan.strip()));
+                }
+                Subnet s = lans.get(mgmtIndex).subnet();
+                if (isAuto(o.mgmtAddress)) {
+                    check(s.usable() >= 2, "The management VLAN needs room for the switch's address");
+                    mgmtIp = o.gatewayLast ? s.lastHost() - 1 : s.firstHost() + 1;
+                } else {
+                    check(isAddress(o.mgmtAddress), "Management address must be an IPv4 address, or auto");
+                    mgmtIp = Subnet.parseAddress(o.mgmtAddress.strip());
+                    check((mgmtIp & s.mask()) == s.network() && mgmtIp != s.network() && mgmtIp != s.broadcast(),
+                            "Management address must be a host address in " + format(s.network()) + "/" + s.prefix());
+                    check(mgmtIp != gateway(s), "Management address can't be the gateway address");
+                }
+            }
+        }
+
+        private boolean needsSwitchUplink() { return layer3 || stick; }
+
+        private String accessPrefix() { return o.switchPortType + (o.switchStacked ? "1/0/" : "0/"); }
+
+        private void services() {
             check(!o.dhcp || o.reserved >= 0, "Addresses to keep for static devices can't be negative");
             check(!o.dhcp || o.dnsServer.isBlank() || isAddress(o.dnsServer), "DNS server must be an IPv4 address, or empty");
             check(!o.dhcp || o.domainName.isBlank() || DOMAIN.matcher(o.domainName).matches(), "Domain name can only use letters, digits, dots and hyphens");
@@ -120,13 +208,54 @@ final class IosConfig {
                 check(o.ospfArea >= 0, "OSPF area can't be negative");
                 check(o.routerId.isBlank() || isAddress(o.routerId), "OSPF router ID must look like an IPv4 address, or be empty");
             }
+        }
 
-            String sw = switch (o.design) {
-                case ROUTER_ON_A_STICK -> switchConfig(false);
-                case LAYER3_SWITCH -> switchConfig(true);
-                case PORT_PER_SUBNET -> null;
-            };
-            return new Result(routerConfig(), sw);
+        private static void access(Access a, String device) {
+            for (String[] p : new String[][] {{a.enableSecret, "enable secret"}, {a.consolePassword, "console password"},
+                    {a.userPassword, "user password"}, {a.vtyPassword, "VTY password"}}) {
+                check(p[0].isEmpty() || PASSWORD.matcher(p[0]).matches(), device + " " + p[1] + " can't contain spaces or '?'");
+            }
+            check(a.username.isEmpty() || USERNAME.matcher(a.username).matches(),
+                    device + " username can only use letters, digits and . _ @ -");
+            check(a.username.isEmpty() == a.userPassword.isEmpty(), device + " local user needs both a username and a password");
+            check(a.banner.indexOf('#') < 0 && !a.banner.matches(".*\\p{Cntrl}.*"), device + " banner can't contain '#'");
+            check(a.timeout >= -1 && a.timeout <= 35791, device + " session timeout must be a number of minutes");
+            if (a.remote == Remote.SSH || a.remote == Remote.BOTH) {
+                check(!a.username.isEmpty(), device + " SSH logins need a local username and password");
+                check(DOMAIN.matcher(a.sshDomain).matches() && a.sshDomain.contains("."),
+                        device + " SSH needs a domain name such as lab.local to create its keys");
+            }
+            if (a.remote == Remote.TELNET) {
+                check(!a.username.isEmpty() || !a.vtyPassword.isEmpty(), device + " Telnet needs a VTY password or a local user");
+            }
+        }
+
+        /** Names every router port: explicit choices are claimed first, then "auto" ports fill the gaps. */
+        private void ports() {
+            int lanCount = stick || layer3 ? 1 : lans.size();
+            for (int i = 0; i < lanCount; i++) {
+                lanPorts.add(isAuto(o.lanPort) ? null : claim(numbered(o.lanPort, i, "Inter-VLAN port")));
+            }
+            for (int i = 0; i < links.size(); i++) {
+                linkPorts.add(isAuto(o.linkInterface) ? null : claim(numbered(o.linkInterface, i, "Point-to-point link interface")));
+            }
+            if (o.uplink) uplinkName = isAuto(o.uplinkInterface) ? null : claim(numbered(o.uplinkInterface, 0, "Uplink interface"));
+            for (int i = 0; i < lanPorts.size(); i++) if (lanPorts.get(i) == null) lanPorts.set(i, nextFree());
+            for (int i = 0; i < linkPorts.size(); i++) if (linkPorts.get(i) == null) linkPorts.set(i, nextFree());
+            if (o.uplink && uplinkName == null) uplinkName = nextFree();
+        }
+
+        private String claim(String port) {
+            check(usedPorts.add(port.toLowerCase(Locale.ROOT)), port + " is used for two different things");
+            return port;
+        }
+
+        private String nextFree() {
+            String port;
+            do {
+                port = o.routerPortType + (o.routerThreeLevel ? "0/0/" : "0/") + nextPort++;
+            } while (!usedPorts.add(port.toLowerCase(Locale.ROOT)));
+            return port;
         }
 
         // ---- router ----------------------------------------------------------------------------
@@ -136,63 +265,59 @@ final class IosConfig {
             out.begin();
             out.line("hostname " + o.routerName);
             if (o.extras) out.line("no ip domain-lookup");
+            securityTop(out, o.routerAccess);
             boolean natOn = o.uplink && o.nat != Nat.OFF; // NAT lives on the uplink, so it is off without one
             List<String> passiveInterfaces = new ArrayList<>();
             List<Subnet> routed = new ArrayList<>();
 
-            if (o.dhcp && o.design != Design.LAYER3_SWITCH) dhcp(out);
+            if (o.dhcp && !layer3) dhcp(out);
 
             out.section("Interfaces");
-            switch (o.design) {
-                case ROUTER_ON_A_STICK -> {
-                    String trunk = ethernet(nextPort++);
-                    out.line("interface " + trunk);
-                    out.line(" description Trunk to " + o.switchName);
-                    out.line(" no shutdown");
-                    if (o.nativeVlan > 0) {
-                        out.line("interface " + trunk + "." + o.nativeVlan);
-                        out.line(" description Native VLAN");
-                        out.line(" encapsulation dot1Q " + o.nativeVlan + " native");
-                    }
-                    for (int i = 0; i < lans.size(); i++) {
-                        Subnet s = lans.get(i).subnet();
-                        String sub = trunk + "." + vlans.get(i);
-                        out.line("interface " + sub);
-                        out.line(" description " + lanNames.get(i));
-                        out.line(" encapsulation dot1Q " + vlans.get(i));
-                        out.line(" ip address " + format(gateway(s)) + " " + format(s.mask()));
-                        if (natOn) out.line(" ip nat inside");
-                        passiveInterfaces.add(sub);
-                        routed.add(s);
-                    }
+            if (stick) {
+                String trunk = lanPorts.getFirst();
+                out.line("interface " + trunk);
+                out.line(" description Trunk to " + o.switchName);
+                out.line(" no shutdown");
+                if (o.nativeVlan > 0) {
+                    out.line("interface " + trunk + "." + o.nativeVlan);
+                    out.line(" description Native VLAN");
+                    out.line(" encapsulation dot1Q " + o.nativeVlan + " native");
                 }
-                case PORT_PER_SUBNET -> {
-                    for (int i = 0; i < lans.size(); i++) {
-                        Subnet s = lans.get(i).subnet();
-                        String port = ethernet(nextPort++);
-                        out.line("interface " + port);
-                        out.line(" description " + lanNames.get(i));
-                        out.line(" ip address " + format(gateway(s)) + " " + format(s.mask()));
-                        if (natOn) out.line(" ip nat inside");
-                        out.line(" no shutdown");
-                        passiveInterfaces.add(port);
-                        routed.add(s);
-                    }
+                for (int i = 0; i < lans.size(); i++) {
+                    Subnet s = lans.get(i).subnet();
+                    String sub = trunk + "." + vlans.get(i);
+                    out.line("interface " + sub);
+                    out.line(" description " + lanNames.get(i));
+                    out.line(" encapsulation dot1Q " + vlans.get(i));
+                    out.line(" ip address " + format(gateway(s)) + " " + format(s.mask()));
+                    if (natOn) out.line(" ip nat inside");
+                    passiveInterfaces.add(sub);
+                    routed.add(s);
                 }
-                case LAYER3_SWITCH -> {
-                    Subnet s = transit.subnet();
-                    out.line("interface " + ethernet(nextPort++));
-                    out.line(" description Link to " + o.switchName + " (" + clean(transit.need().name()) + ")");
-                    out.line(" ip address " + format(s.firstHost()) + " " + format(s.mask()));
+            } else if (layer3) {
+                Subnet s = transit.subnet();
+                out.line("interface " + lanPorts.getFirst());
+                out.line(" description Link to " + o.switchName + " (" + clean(transit.need().name()) + ")");
+                out.line(" ip address " + format(s.firstHost()) + " " + format(s.mask()));
+                if (natOn) out.line(" ip nat inside");
+                out.line(" no shutdown");
+                routed.add(s);
+            } else {
+                for (int i = 0; i < lans.size(); i++) {
+                    Subnet s = lans.get(i).subnet();
+                    String port = lanPorts.get(i);
+                    out.line("interface " + port);
+                    out.line(" description " + lanNames.get(i));
+                    out.line(" ip address " + format(gateway(s)) + " " + format(s.mask()));
                     if (natOn) out.line(" ip nat inside");
                     out.line(" no shutdown");
+                    passiveInterfaces.add(port);
                     routed.add(s);
                 }
             }
             for (int i = 0; i < links.size(); i++) {
                 Vlsm.Allocation a = links.get(i);
-                String port = isAuto(o.linkInterface) ? ethernet(nextPort++) : numbered(o.linkInterface, i, "Point-to-point link interface");
-                out.line("interface " + port);
+                out.line("interface " + linkPorts.get(i));
                 out.line(" description " + clean(a.need().name()));
                 out.line(" ip address " + format(a.subnet().firstHost()) + " " + format(a.subnet().mask()));
                 if (natOn) out.line(" ip nat inside");
@@ -201,9 +326,8 @@ final class IosConfig {
             }
             String defaultRoute = null;
             if (o.uplink) {
-                String port = isAuto(o.uplinkInterface) ? ethernet(nextPort++) : numbered(o.uplinkInterface, 0, "Uplink interface");
                 boolean viaDhcp = o.uplinkAddress.strip().equalsIgnoreCase("dhcp");
-                out.line("interface " + port);
+                out.line("interface " + uplinkName);
                 out.line(" description Internet uplink");
                 if (viaDhcp) {
                     out.line(" ip address dhcp");
@@ -221,7 +345,6 @@ final class IosConfig {
                     check(viaDhcp, "Enter the next-hop address for the default route (or use dhcp on the uplink)");
                     defaultRoute = "";
                 }
-                uplinkPortName = port;
             }
 
             out.section("Routing");
@@ -231,7 +354,7 @@ final class IosConfig {
                 for (Subnet s : routed) out.line(" network " + format(s.network()) + " " + format(s.wildcard()) + " area " + o.ospfArea);
                 if (o.passive) for (String p : passiveInterfaces) out.line(" passive-interface " + p);
                 if (defaultRoute != null) out.line(" default-information originate");
-            } else if (o.design == Design.LAYER3_SWITCH) {
+            } else if (layer3) {
                 for (Vlsm.Allocation a : lans) {
                     out.line("ip route " + format(a.subnet().network()) + " " + format(a.subnet().mask()) + " "
                             + format(transit.subnet().lastHost()));
@@ -242,6 +365,7 @@ final class IosConfig {
             staticRoutes(out);
 
             if (natOn) nat(out);
+            lines(out, o.routerAccess);
             out.end();
             return out.toString();
         }
@@ -251,7 +375,7 @@ final class IosConfig {
             Subnet inside = plan.network();
             out.line("access-list 1 permit " + format(inside.network()) + " " + format(inside.wildcard()));
             if (o.nat == Nat.PAT) {
-                out.line("ip nat inside source list 1 interface " + uplinkPortName + " overload");
+                out.line("ip nat inside source list 1 interface " + uplinkName + " overload");
             } else {
                 check(isAddress(o.poolStart) && isAddress(o.poolEnd), "NAT pool start and end must be IPv4 addresses");
                 check(o.poolPrefix >= 8 && o.poolPrefix <= 32, "NAT pool prefix must be between 8 and 32");
@@ -300,31 +424,32 @@ final class IosConfig {
 
         // ---- switch ----------------------------------------------------------------------------
 
-        private String switchConfig(boolean layer3) {
+        private String switchConfig() {
             Out out = new Out(o);
             out.begin();
             out.line("hostname " + o.switchName);
             if (o.extras) out.line("no ip domain-lookup");
             if (layer3) out.line("ip routing");
+            securityTop(out, o.switchAccess);
 
             out.section("VLANs");
             for (int i = 0; i < lans.size(); i++) {
                 out.line("vlan " + vlans.get(i));
                 out.line(" name " + lanNames.get(i));
             }
-            if (o.nativeVlan > 0) {
+            if (o.nativeVlan > 0 && stick) {
                 out.line("vlan " + o.nativeVlan);
                 out.line(" name NATIVE");
             }
 
             if (o.accessPorts > 0) {
                 out.section("Access ports");
+                if (!stick && !layer3) out.comment("Connect each router LAN port to an access port in its VLAN");
+                String prefix = accessPrefix();
                 int port = 1;
                 for (int i = 0; i < lans.size(); i++, port += o.accessPorts) {
                     int last = port + o.accessPorts - 1;
-                    out.line(o.accessPorts == 1
-                            ? "interface " + o.accessPortPrefix + port
-                            : "interface range " + o.accessPortPrefix + port + " - " + last);
+                    out.line(o.accessPorts == 1 ? "interface " + prefix + port : "interface range " + prefix + port + " - " + last);
                     out.line(" description " + lanNames.get(i));
                     out.line(" switchport mode access");
                     out.line(" switchport access vlan " + vlans.get(i));
@@ -342,7 +467,7 @@ final class IosConfig {
                     out.line(" no shutdown");
                 }
                 Subnet t = transit.subnet();
-                out.line("interface " + o.uplinkPort);
+                out.line("interface " + switchUplink);
                 out.line(" description Link to " + o.routerName);
                 out.line(" no switchport");
                 out.line(" ip address " + format(t.lastHost()) + " " + format(t.mask()));
@@ -360,37 +485,97 @@ final class IosConfig {
                     out.line("ip route 0.0.0.0 0.0.0.0 " + format(t.firstHost()));
                 }
             } else {
-                out.section("Trunk to " + o.routerName);
-                out.line("interface " + o.uplinkPort);
-                out.line(" description Trunk to " + o.routerName);
-                out.line(" switchport mode trunk");
-                if (o.nativeVlan > 0) out.line(" switchport trunk native vlan " + o.nativeVlan);
+                if (stick) {
+                    out.section("Trunk to " + o.routerName);
+                    out.line("interface " + switchUplink);
+                    out.line(" description Trunk to " + o.routerName);
+                    out.line(" switchport mode trunk");
+                    if (o.nativeVlan > 0) out.line(" switchport trunk native vlan " + o.nativeVlan);
+                    out.line(" no shutdown");
+                }
+                Subnet s = lans.get(mgmtIndex).subnet();
+                out.section("Management");
+                out.line("interface Vlan" + vlans.get(mgmtIndex));
+                out.line(" description Management (" + lanNames.get(mgmtIndex) + ")");
+                out.line(" ip address " + format(mgmtIp) + " " + format(s.mask()));
                 out.line(" no shutdown");
+                out.line("ip default-gateway " + format(gateway(s)));
             }
+            lines(out, o.switchAccess);
             out.end();
             return out.toString();
         }
 
         // ---- shared pieces ---------------------------------------------------------------------
 
+        /** Global security commands; these go near the top so SSH keys see the hostname and domain. */
+        private void securityTop(Out out, Access a) {
+            boolean ssh = a.remote == Remote.SSH || a.remote == Remote.BOTH;
+            boolean anyPassword = !a.enableSecret.isEmpty() || !a.consolePassword.isEmpty() || !a.vtyPassword.isEmpty()
+                    || !a.userPassword.isEmpty();
+            if (!anyPassword && !ssh && a.banner.isBlank()) return;
+            out.section("Security");
+            if (a.encrypt && anyPassword) out.line("service password-encryption");
+            if (!a.enableSecret.isEmpty()) out.line("enable secret " + a.enableSecret);
+            if (!a.username.isEmpty()) out.line("username " + a.username + " privilege 15 secret " + a.userPassword);
+            if (!a.banner.isBlank()) out.line("banner motd #" + a.banner.strip() + "#");
+            if (ssh) {
+                out.line("ip domain-name " + a.sshDomain.strip());
+                out.line("crypto key generate rsa general-keys modulus " + a.keyBits);
+                out.line("ip ssh version 2");
+            }
+        }
+
+        /** Console and VTY line settings. */
+        private void lines(Out out, Access a) {
+            List<String> con = new ArrayList<>();
+            if (!a.consolePassword.isEmpty()) {
+                con.add(" password " + a.consolePassword);
+                con.add(" login");
+            }
+            if (o.extras) con.add(" logging synchronous");
+            if (a.timeout >= 0) con.add(" exec-timeout " + a.timeout + " 0");
+            boolean vty = a.remote != Remote.OFF;
+            if (con.isEmpty() && !vty) return;
+            out.section("Console and remote access");
+            if (!con.isEmpty()) {
+                out.line("line con 0");
+                con.forEach(out::line);
+            }
+            if (vty) {
+                out.line(a.allVty ? "line vty 0 15" : "line vty 0 4");
+                if (!a.username.isEmpty()) {
+                    out.line(" login local");
+                } else {
+                    out.line(" password " + a.vtyPassword);
+                    out.line(" login");
+                }
+                out.line(" transport input " + switch (a.remote) {
+                    case TELNET -> "telnet";
+                    case SSH -> "ssh";
+                    default -> "ssh telnet";
+                });
+                if (a.timeout >= 0) out.line(" exec-timeout " + a.timeout + " 0");
+            }
+        }
+
         private void dhcp(Out out) {
             out.section("DHCP");
             for (int i = 0; i < lans.size(); i++) {
                 Subnet s = lans.get(i).subnet();
-                int gw = gateway(s);
-                if (s.prefix() >= 31 || o.reserved + 1 >= s.usable()) {
+                if (!hasPool(s)) {
                     out.comment("No DHCP pool for " + lanNames.get(i) + ": no addresses left to hand out");
                     continue;
                 }
-                out.line("ip dhcp excluded-address " + format(gw));
-                if (o.reserved > 0) {
-                    int from = o.gatewayLast ? s.firstHost() : s.firstHost() + 1;
-                    out.line("ip dhcp excluded-address " + format(from) + " " + format(from + o.reserved - 1));
-                }
+                out.line("ip dhcp excluded-address " + format(gateway(s)));
+                int from = o.gatewayLast ? s.firstHost() : s.firstHost() + 1;
+                if (o.reserved > 0) out.line("ip dhcp excluded-address " + format(from) + " " + format(from + o.reserved - 1));
+                boolean mgmtCovered = o.reserved > 0 && Integer.compareUnsigned(mgmtIp - from, o.reserved) < 0;
+                if (i == mgmtIndex && !mgmtCovered) out.line("ip dhcp excluded-address " + format(mgmtIp));
             }
             for (int i = 0; i < lans.size(); i++) {
                 Subnet s = lans.get(i).subnet();
-                if (s.prefix() >= 31 || o.reserved + 1 >= s.usable()) continue;
+                if (!hasPool(s)) continue;
                 out.line("ip dhcp pool " + lanNames.get(i));
                 out.line(" network " + format(s.network()) + " " + format(s.mask()));
                 out.line(" default-router " + format(gateway(s)));
@@ -399,16 +584,14 @@ final class IosConfig {
             }
         }
 
-        private int gateway(Subnet s) { return o.gatewayLast ? s.lastHost() : s.firstHost(); }
+        private boolean hasPool(Subnet s) { return s.prefix() < 31 && o.reserved + 1 < s.usable(); }
 
-        private String ethernet(int n) {
-            return o.interfaceType + (o.threeLevelNumbering ? "0/0/" : "0/") + n;
-        }
+        private int gateway(Subnet s) { return o.gatewayLast ? s.lastHost() : s.firstHost(); }
 
         /** {@code base} itself for index 0, then the same name with its last number increased. */
         private static String numbered(String base, int index, String what) {
             String name = base.strip();
-            check(INTERFACE.matcher(name).matches(), what + " must be an interface name like Serial0/1/0, or auto");
+            check(INTERFACE.matcher(name).matches(), what + " must be an interface name like GigabitEthernet0/1, or auto");
             if (index == 0) return name;
             Matcher m = TRAILING_NUMBER.matcher(name);
             check(m.matches(), what + " must end with a number");
@@ -431,11 +614,6 @@ final class IosConfig {
         }
 
         void end() {
-            if (o.extras) {
-                section("Console");
-                line("line con 0");
-                line(" logging synchronous");
-            }
             if (o.wrap) {
                 line("end");
                 line("write memory");

@@ -12,7 +12,7 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 | IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.3.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.3.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -48,13 +48,16 @@ Current version: **1.3.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in
 Turns the plan on the VLSM planner page into router and switch configurations you can paste into
 Packet Tracer or a real device. It updates live as you change the plan or the options, and the
 options are remembered.
-- **LAN designs:** router on a stick (802.1Q subinterfaces plus switch VLANs, access ports and a
-  trunk), one router port per subnet, or a layer 3 switch (SVIs with `ip routing` and a routed link
-  to the router over a 2-host subnet in the plan).
-- **Interfaces:** FastEthernet or GigabitEthernet, `0/0` or `0/0/0` numbering, gateway on the first
-  or last usable address. Subnets with 1–2 hosts can become point-to-point links on the next free
-  port or a named interface such as `Serial0/1/0`.
-- **VLANs:** first ID and step, native VLAN, access ports per VLAN, access port prefix and the uplink port.
+- **Router:** hostname, FastEthernet or GigabitEthernet, `0/0` or `0/0/0` numbering, inter-VLAN
+  routing as router on a stick (802.1Q subinterfaces) or a port per subnet, and which port does the
+  inter-VLAN work (the trunk, the first LAN port, or the port facing a layer 3 switch).
+- **Switch:** none, layer 2 or layer 3, with its own hostname, port type and `0/1` or `1/0/1`
+  numbering. A layer 2 switch gets VLANs, access ports, the trunk and a management VLAN interface
+  with a default gateway. A layer 3 switch routes the VLANs itself (SVIs, `ip routing`) and connects
+  to the router over a 2-host subnet in the plan.
+- **Addressing:** gateway on the first or last usable address; subnets with 1–2 hosts can become
+  point-to-point links on the next free port or a named interface such as `Serial0/1/0`.
+- **VLANs:** first ID and step, native VLAN, access ports per VLAN and the trunk / uplink port.
 - **DHCP:** a pool per LAN with the gateway excluded, plus DNS server, domain name and a number of
   addresses kept free for static devices.
 - **Routing:** OSPF with wildcard-mask network statements, process ID, area, router ID, passive LAN
@@ -62,6 +65,9 @@ options are remembered.
   extra static routes.
 - **Internet uplink and NAT:** static or DHCP address with a default route; NAT off, PAT on the
   uplink, or an address pool (with or without overload); static NAT and port forwards.
+- **Security and remote access, per device:** enable secret, console password, a local user,
+  Telnet / SSH / both (domain name, RSA key size, `ip ssh version 2`), VTY lines 0–4 or 0–15, idle
+  timeout, `service password-encryption` and a MOTD banner. Passwords are never saved to disk.
 - **Output:** optional `enable` / `configure terminal` … `write memory` wrapper, lab extras
   (`no ip domain-lookup`, `logging synchronous`) and section comments. Copy or save each device's config.
 

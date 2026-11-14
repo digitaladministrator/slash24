@@ -4,6 +4,34 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-11-14
+
+### Changed
+- **Interfaces are set per device.** The config page now has separate Router and Switch sections,
+  each with its own hostname, port type (FastEthernet / GigabitEthernet) and numbering (router
+  `0/0` or `0/0/0`; switch `0/1` or `1/0/1`). The fixed "access port prefix" field is replaced by
+  the switch's port type and numbering.
+- **Layer 3 is a switch setting.** The switch is now None, Layer 2 or Layer 3. The router only offers
+  its own inter-VLAN choices (router on a stick or a port per subnet), which hide when the switch
+  does the routing. Settings from 1.3.0 carry over.
+- A port per subnet with a layer 2 switch now also produces the switch's VLANs and access ports.
+
+### Added
+- **Inter-VLAN port choice** on the router: the trunk port (router on a stick), the first LAN port
+  (port per subnet, numbered upward) or the port facing a layer 3 switch. Automatic ports skip any
+  port you pick, and a port used for two things is reported.
+- **Security and remote access for the router and the switch separately:** enable secret, console
+  password, local user (`privilege 15 secret`), Telnet, SSH or both (`ip domain-name`, RSA key of
+  1024 or 2048 bits, `ip ssh version 2`), VTY lines 0–4 or 0–15, idle timeout, `service
+  password-encryption` and a MOTD banner. Passwords are not saved between runs.
+- **Switch management interface** for layer 2 switches: a management VLAN (automatic picks a VLAN
+  named like "Management") with an address and `ip default-gateway`, which remote access to the
+  switch needs. The address is excluded from DHCP.
+- Checks for SSH without a local user, Telnet without a password, passwords with spaces or `?`
+  (which would break a pasted config), router on a stick without a switch, and the switch uplink
+  overlapping its access ports.
+- Tests for the new options (172 checks, up from 150).
+
 ## [1.3.0] - 2026-11-14
 
 ### Added
@@ -104,6 +132,7 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.3.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.1.0...v1.2.0

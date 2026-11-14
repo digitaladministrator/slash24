@@ -231,15 +231,15 @@ public final class SubnetTest {
         o.uplink = true;
         o.nat = IosConfig.Nat.POOL;
         o.poolOverload = false;
-        o.interfaceType = "FastEthernet";
-        o.threeLevelNumbering = true;
+        o.routerPortType = "FastEthernet";
+        o.routerThreeLevel = true;
         r = IosConfig.generate(office, o);
         has("ios pool", r.router(), "ip nat pool PUBLIC 203.0.113.10 203.0.113.20 netmask 255.255.255.0\n"
                 + "ip nat inside source list 1 pool PUBLIC\n");
         has("ios fa 0/0/0", r.router(), "interface FastEthernet0/0/0\n");
 
         o = new IosConfig.Options();
-        o.design = IosConfig.Design.LAYER3_SWITCH;
+        o.switchKind = IosConfig.SwitchKind.LAYER3;
         r = IosConfig.generate(office, o);
         has("ios l3 ip routing", r.switchConfig(), "ip routing\n");
         has("ios l3 svi", r.switchConfig(), "interface Vlan10\n description SALES\n ip address 192.168.10.1 255.255.255.192\n");
@@ -250,13 +250,96 @@ public final class SubnetTest {
         missing("ios l3 no dhcp on router", r.router(), "ip dhcp");
 
         o = new IosConfig.Options();
-        o.design = IosConfig.Design.PORT_PER_SUBNET;
+        o.routing = IosConfig.Routing.PORT_PER_SUBNET;
+        o.switchKind = IosConfig.SwitchKind.NONE;
         o.gatewayLast = true;
         o.linkInterface = "Serial0/1/0";
         r = IosConfig.generate(Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("A 50\nB 20\nTo R2 2\nTo R3 2"), false), o);
         eq("ios per-port has no switch", null, r.switchConfig());
         has("ios last usable gateway", r.router(), "interface GigabitEthernet0/1\n description B\n ip address 10.0.0.94 255.255.255.224\n");
         has("ios serial numbering", r.router(), "interface Serial0/1/1\n description To R3\n ip address 10.0.0.101 255.255.255.252\n");
+
+        // 1.3.1: per-device ports, inter-VLAN port choice, management SVI, security and remote access
+        o = new IosConfig.Options();
+        o.lanPort = "GigabitEthernet0/1";
+        o.switchPortType = "GigabitEthernet";
+        o.switchStacked = true;
+        r = IosConfig.generate(office, o);
+        has("ios chosen trunk port", r.router(), "interface GigabitEthernet0/1.10\n");
+        has("ios auto skips chosen port", r.router(), "interface GigabitEthernet0/0\n description WAN link\n");
+        has("ios switch ports per device", r.switchConfig(), "interface range GigabitEthernet1/0/1 - 2\n");
+        has("ios stacked uplink", r.switchConfig(), "interface GigabitEthernet1/1/1\n description Trunk to R1\n");
+        has("ios management svi", r.switchConfig(), "interface Vlan40\n description Management (MANAGEMENT)\n"
+                + " ip address 192.168.10.114 255.255.255.248\n no shutdown\nip default-gateway 192.168.10.113\n");
+        has("ios management excluded from dhcp", r.router(), "ip dhcp excluded-address 192.168.10.114\n");
+
+        o = new IosConfig.Options();
+        o.routing = IosConfig.Routing.PORT_PER_SUBNET;
+        o.lanPort = "GigabitEthernet0/0/2";
+        r = IosConfig.generate(office, o);
+        has("ios per-port first lan port", r.router(), "interface GigabitEthernet0/0/2\n description SALES\n");
+        has("ios per-port counts up", r.router(), "interface GigabitEthernet0/0/3\n description ENGINEERING\n");
+        has("ios per-port l2 switch access only", r.switchConfig(), "! Connect each router LAN port to an access port in its VLAN\n");
+        missing("ios per-port no trunk", r.switchConfig(), "switchport mode trunk");
+
+        o = new IosConfig.Options();
+        o.routerAccess.enableSecret = "class";
+        o.routerAccess.consolePassword = "cisco";
+        o.routerAccess.username = "admin";
+        o.routerAccess.userPassword = "S3cret!";
+        o.routerAccess.remote = IosConfig.Remote.SSH;
+        o.routerAccess.timeout = 5;
+        o.routerAccess.banner = "Authorized access only";
+        o.switchAccess.remote = IosConfig.Remote.TELNET;
+        o.switchAccess.vtyPassword = "telnetpw";
+        o.switchAccess.allVty = true;
+        r = IosConfig.generate(office, o);
+        has("ios security top", r.router(), "service password-encryption\nenable secret class\n"
+                + "username admin privilege 15 secret S3cret!\nbanner motd #Authorized access only#\n"
+                + "ip domain-name lab.local\ncrypto key generate rsa general-keys modulus 2048\nip ssh version 2\n");
+        has("ios console", r.router(), "line con 0\n password cisco\n login\n logging synchronous\n exec-timeout 5 0\n");
+        has("ios ssh vty", r.router(), "line vty 0 4\n login local\n transport input ssh\n exec-timeout 5 0\n");
+        has("ios telnet vty", r.switchConfig(), "line vty 0 15\n password telnetpw\n login\n transport input telnet\n");
+        missing("ios switch no ssh keys", r.switchConfig(), "crypto key");
+
+        String[][] access = {{"ssh-no-user"}, {"telnet-no-password"}, {"password-with-space"}, {"user-without-password"}, {"banner-hash"}};
+        for (String[] b : access) {
+            o = new IosConfig.Options();
+            IosConfig.Access a = o.routerAccess;
+            switch (b[0]) {
+                case "ssh-no-user" -> a.remote = IosConfig.Remote.SSH;
+                case "telnet-no-password" -> a.remote = IosConfig.Remote.TELNET;
+                case "password-with-space" -> a.enableSecret = "two words";
+                case "user-without-password" -> a.username = "admin";
+                default -> a.banner = "no # allowed";
+            }
+            checks++;
+            try {
+                IosConfig.generate(office, o);
+                fail("ios should reject " + b[0]);
+            } catch (IllegalArgumentException expected) {
+                // rejected with a message for the user
+            }
+        }
+        o = new IosConfig.Options();
+        o.switchKind = IosConfig.SwitchKind.NONE;
+        checks++;
+        try {
+            IosConfig.generate(office, o);
+            fail("ios should reject router on a stick without a switch");
+        } catch (IllegalArgumentException expected) {
+            // a trunk needs a switch
+        }
+        o = new IosConfig.Options();
+        o.lanPort = "GigabitEthernet0/1";
+        o.linkInterface = "GigabitEthernet0/1";
+        checks++;
+        try {
+            IosConfig.generate(office, o);
+            fail("ios should reject a port used twice");
+        } catch (IllegalArgumentException expected) {
+            // two roles on one port
+        }
 
         eq("ios name", "GUEST_WI_FI", IosConfig.name("Guest Wi-Fi!", "X"));
         String[][] bad = {
@@ -273,7 +356,7 @@ public final class SubnetTest {
                 case "vlanStart" -> o.vlanStart = Integer.parseInt(b[1]);
                 case "staticRoutes" -> o.staticRoutes = b[1];
                 default -> {
-                    o.design = IosConfig.Design.LAYER3_SWITCH;
+                    o.switchKind = IosConfig.SwitchKind.LAYER3;
                     plan = Vlsm.plan(Subnet.parse("10.0.0.0/24"), Vlsm.parse("A 50"), false);
                 }
             }
