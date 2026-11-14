@@ -48,7 +48,8 @@ Current version: **1.4.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in
 
 ### IOS config generator
 Turns the plan on the VLSM planner page into router and switch configurations you can paste into
-Packet Tracer or a real device. It updates live as you change the plan or the options, and the
+Packet Tracer or a real device. (Review them before using them on production equipment; see the
+[disclaimer](#disclaimer).) It updates live as you change the plan or the options, and the
 options are remembered. Each settings section can be collapsed. Clearing an optional field leaves
 that setting out of the config, and "auto" picks a value for you.
 - **Router:** hostname, FastEthernet or GigabitEthernet, `0/0` or `0/0/0` numbering, inter-VLAN
@@ -152,3 +153,8 @@ publishes the installers when a version tag such as `v1.4.1` is pushed.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Disclaimer
+
+Slash24 is not affiliated with or endorsed by Cisco Systems. Cisco and IOS are trademarks of Cisco
+Systems, Inc. Review generated configurations before using them on production equipment.
