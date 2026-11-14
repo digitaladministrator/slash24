@@ -1,15 +1,16 @@
 # Subnet Calculator
 
-A fast IPv4 subnet calculator and VLSM planner for the Linux desktop, written in plain Java with
-**no dependencies**. It reads your KDE colour scheme and accent colour so it looks at home on Plasma
+A fast IPv4 subnet calculator, VLSM planner and route-summarization tool for the Linux desktop,
+written in plain Java with **no dependencies**. It reads your KDE colour scheme and accent colour so it looks at home on Plasma
 (Breeze), and has a dark / light mode switch.
 
 | | Dark | Light |
 |---|---|---|
 | Calculator | ![Calculator, dark](docs/calculator-dark.png) | ![Calculator, light](docs/calculator-light.png) |
 | VLSM planner | ![VLSM planner, dark](docs/vlsm-dark.png) | ![VLSM planner, light](docs/vlsm-light.png) |
+| Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 
-Current version: **1.1.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.2.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
@@ -19,6 +20,8 @@ Current version: **1.1.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in
 - Network, broadcast, first/last host, usable and total addresses, netmask, wildcard, class,
   address type (private, CGNAT, loopback, multicast…) and hex.
 - Address and mask shown in binary with the network bits highlighted.
+- **Contains?** Paste an address to see whether it's in the network, its position (host 77 of 254,
+  network or broadcast address), and which split subnet it falls in. That row is highlighted.
 - Splits a network into equal subnets. Rows are computed on demand, so large splits use no memory.
 - **Copy results** puts a plain-text summary on the clipboard.
 
@@ -32,13 +35,34 @@ Current version: **1.1.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in
 - Optional **/31 and /32 links**: 2-host needs get a /31 (RFC 3021) and 1-host needs a /32. When it's
   off, both get a /30, the traditional point-to-point allocation.
 
+### Route tools
+- **Summarize networks:** paste a list of networks to get the smallest single summary route that
+  covers them all, how many extra addresses it takes in, and the exact set of blocks that covers
+  only your list (overlaps and neighbours merged).
+- **Range to CIDR:** enter a first and last address to get the fewest CIDR blocks that cover exactly
+  that range.
+
 ### Everywhere
-- **Export CSV…** saves the subnet table from either page as a spreadsheet-ready CSV file
+- **Copy table** puts any table on the clipboard as tab-separated text, which pastes straight into
+  spreadsheet cells (up to 100,000 rows; use Export CSV for more).
+- **Export CSV…** saves the table from any page as a spreadsheet-ready CSV file
   (RFC 4180, with separate columns for network, prefix, netmask, first/last host and broadcast).
   It uses KDE's own save dialog when `kdialog` is installed, and writes on a background thread.
 - Handles /31 point-to-point links (RFC 3021) and /32 host routes correctly.
-- Dark / light switch and the last page you used are remembered between runs. The first launch
-  follows the desktop's colour scheme.
+- **Match system** follows the Plasma colour scheme and accent colour live, including changes made
+  while the app is open. Turn it off to pick dark or light yourself. All of this is remembered.
+- **Recent** (or the Down arrow) on the network fields lists the last 10 networks you used.
+- Errors wait until you pause typing, so half-typed input like `192.168.` isn't flagged straight away.
+
+### Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| Ctrl+L | Jump to the page's main input |
+| Ctrl+Shift+C | Copy results (Calculator) or the table (other pages) |
+| Ctrl+D | Toggle dark / light (turns off Match system) |
+| Ctrl+1 / 2 / 3 | Calculator / VLSM planner / Route tools |
+| Down arrow | Recent networks, in a network field |
 
 ## Requirements
 
@@ -59,9 +83,11 @@ Remove it with `./install.sh --uninstall`.
 
 ## Design notes
 
-- `Subnet` holds the address arithmetic (all on a 32-bit `int`), `Vlsm` the planner, and `Csv` the
-  export. `Theme` reads colours from `~/.config/kdeglobals` with Breeze fallbacks. `Ui` is a small
-  flat look and feel with the shared widgets, and `CalculatorView` / `VlsmView` are the two pages.
+- `Subnet` holds the address arithmetic (all on a 32-bit `int`), `Vlsm` the planner, `Cidr` range
+  splitting and summarization, and `Csv` the export. `Theme` reads colours from `~/.config/kdeglobals`
+  with Breeze fallbacks and watches it with inotify for live changes. `Ui` is a small flat look and
+  feel with the shared widgets, `History` the recent-networks list, and `CalculatorView`, `VlsmView`
+  and `ToolsView` are the three pages.
 - The jar is a few dozen KB. The launcher uses a small heap, the serial GC and an automatically
   created class-data-sharing archive, so later starts are quicker and memory use stays low.
 - Tests are a plain Java class (`test/subnetcalc/SubnetTest.java`) run by `build.sh`, with no test framework.

@@ -4,6 +4,33 @@ All notable changes to Subnet Calculator. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-14
+
+### Added
+- **Route tools page** (third tab):
+  - *Summarize networks*: the smallest single summary route covering a list of networks, how many
+    extra addresses it includes, and the exact aggregate (fewest blocks covering only the list, with
+    overlaps and neighbours merged). A bare address counts as a /32.
+  - *Range to CIDR*: the fewest CIDR blocks covering exactly a first-to-last address range.
+- **"Contains?" check** on the calculator: whether an address is inside the network, its position
+  (host number, or the network or broadcast address), and which split subnet it falls in. That table
+  row is selected and scrolled into view.
+- **Copy table** on every page: the table goes to the clipboard as tab-separated text, ready to paste
+  into a spreadsheet (up to 100,000 rows).
+- **Match system** switch: follows the Plasma colour scheme and accent colour live by watching
+  `kdeglobals` (inotify, no polling). The Dark mode switch is used when Match system is off.
+  Match system is the default for new installs; an earlier dark/light choice is kept on upgrade.
+- **Recent networks**: the last 10 valid networks on the Calculator and VLSM pages, from a Recent
+  button or the Down arrow in the field, with Clear history.
+- **Keyboard shortcuts**: Ctrl+L (focus input), Ctrl+Shift+C (copy), Ctrl+D (dark/light),
+  Ctrl+1/2/3 (switch page).
+- Tests for summarization, range splitting and the "Contains?" wording (93 checks, up from 73).
+
+### Changed
+- Input errors now appear once typing pauses (about 0.8 s), so half-typed input such as `192.168.`
+  is no longer flagged red immediately. An error that is already showing updates straight away.
+- Default window size is 1000 × 800 to fit the new header controls.
+
 ## [1.1.0] - 2026-11-14
 
 ### Added
@@ -39,5 +66,6 @@ All notable changes to Subnet Calculator. The format follows
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.2.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/digitaladministrator/subnet-calculator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/digitaladministrator/subnet-calculator/releases/tag/v1.0.0

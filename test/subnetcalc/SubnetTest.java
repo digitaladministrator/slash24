@@ -67,6 +67,7 @@ public final class SubnetTest {
 
         vlsm();
         csv();
+        cidr();
 
         if (failures > 0) {
             System.err.println(failures + " of " + checks + " checks failed");
@@ -125,6 +126,49 @@ public final class SubnetTest {
         eq("csv plain", "a,b,c\r\n", Csv.line("a", "b", "c"));
         eq("csv quoting", "\"Lab, east\",\"say \"\"hi\"\"\",2\r\n", Csv.line("Lab, east", "say \"hi\"", "2"));
     }
+
+    private static void cidr() {
+        Cidr.Summary s = Cidr.summarize(Cidr.parseList("192.168.0.0/24\n192.168.1.0/24, 192.168.2.0/24; 192.168.3.0/24"));
+        eq("summary route", "192.168.0.0/22", block(s.route()));
+        eq("summary exact", "[192.168.0.0/22]", blocks(s.exact()));
+        eq("summary covered", 1024L, s.covered());
+
+        s = Cidr.summarize(Cidr.parseList("10.0.0.0/24\n10.0.3.0/24"));
+        eq("gap route", "10.0.0.0/22", block(s.route()));
+        eq("gap exact", "[10.0.0.0/24, 10.0.3.0/24]", blocks(s.exact()));
+        eq("gap covered", 512L, s.covered());
+
+        s = Cidr.summarize(Cidr.parseList("10.0.5.0/24\n10.0.0.0/16\n10.0.9.9/32"));
+        eq("overlap route", "10.0.0.0/16", block(s.route()));
+        eq("overlap exact", "[10.0.0.0/16]", blocks(s.exact()));
+
+        s = Cidr.summarize(Cidr.parseList("8.8.8.8"));
+        eq("bare address is /32", "8.8.8.8/32", block(s.route()));
+        s = Cidr.summarize(Cidr.parseList("10.1.2.3/24, 10.1.3.200/24"));
+        eq("host bits ignored", "[10.1.2.0/23]", blocks(s.exact()));
+        eq("far apart", "0.0.0.0/0", block(Cidr.summarize(Cidr.parseList("1.0.0.0/8, 200.0.0.0/8")).route()));
+
+        eq("range", "[10.0.0.5/32, 10.0.0.6/31, 10.0.0.8/29, 10.0.0.16/28, 10.0.0.32/27, 10.0.0.64/29, 10.0.0.72/30, 10.0.0.76/31]",
+                blocks(Cidr.range(0x0A000005L, 0x0A00004EL)));
+        eq("range whole space", "[0.0.0.0/0]", blocks(Cidr.range(0, 1L << 32)));
+        eq("range single", "[255.255.255.255/32]", blocks(Cidr.range(0xFFFFFFFFL, 1L << 32)));
+
+        checks++;
+        try {
+            Cidr.parseList("10.0.0.0/24\n10.0.0.300/24");
+            fail("summary should reject a bad entry");
+        } catch (IllegalArgumentException e) {
+            eq("summary error names entry", true, e.getMessage().startsWith("Entry 2:"));
+        }
+
+        Subnet net = Subnet.parse("192.168.1.0/24");
+        eq("position host", "host 10 of 254", CalculatorView.position(net, 10));
+        eq("position network", "the network address", CalculatorView.position(net, 0));
+        eq("position broadcast", "the broadcast address", CalculatorView.position(net, 255));
+        eq("position /31", "address 2 of 2", CalculatorView.position(Subnet.parse("10.0.0.0/31"), 1));
+    }
+
+    private static String block(Subnet s) { return format(s.network()) + "/" + s.prefix(); }
 
     private static String blocks(java.util.List<Subnet> list) {
         return list.stream().map(s -> format(s.network()) + "/" + s.prefix()).toList().toString();

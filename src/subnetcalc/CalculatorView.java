@@ -12,34 +12,53 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.util.prefs.Preferences;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
 import javax.swing.JTextField;
 
-/** The single-network calculator page: details of one address plus an even split into subnets. */
-final class CalculatorView {
+/** The single-network calculator page: details of one address, a containment check and an even split. */
+final class CalculatorView implements Page {
     private static final String[] KEYS = {
         "Network", "Broadcast", "First host", "Last host", "Usable hosts", "Total addresses",
         "Netmask", "Wildcard", "Prefix", "Class", "Type", "Hex"};
 
-    final JPanel root = new JPanel(new BorderLayout());
+    private final JPanel root = new JPanel(new BorderLayout());
     private final JTextField input = new JTextField("192.168.1.10/24");
     private final JTextField split = new JTextField("26", 3);
-    private final JLabel message = new JLabel(" ");
-    private final JLabel splitInfo = new JLabel(" ");
+    private final JTextField contains = new JTextField(15);
+    private final JLabel message = new JLabel(" "), splitInfo = new JLabel(" "), containsInfo = new JLabel(" ");
+    private final Ui.Problem inputProblem = new Ui.Problem(input, message);
+    private final Ui.Problem splitProblem = new Ui.Problem(split, splitInfo);
+    private final Ui.Problem containsProblem = new Ui.Problem(contains, containsInfo);
     private final JTextField[] values = new JTextField[KEYS.length];
     private final Ui.Bits addressBits = new Ui.Bits(), maskBits = new Ui.Bits();
     private final SubnetRows rows = new SubnetRows();
+    private final JTable table;
+    private final History history;
     private final JButton export = new JButton("Export CSV…");
+    private final JButton copyTable = new JButton("Copy table");
+    private final JButton copyResults = new JButton("Copy results");
 
-    CalculatorView() {
+    CalculatorView(Preferences prefs) {
+        history = new History(prefs, "history.calculator");
         input.setFont(Ui.MONO.deriveFont(15f));
+        input.setToolTipText("Ctrl+L to jump here, Down arrow for recent networks");
         split.setFont(Ui.MONO);
+        contains.setFont(Ui.MONO);
+        contains.setToolTipText("An address to locate in this network");
+
         JPanel grid = new JPanel(new GridBagLayout());
         int y = 0;
         grid.add(dim("IPv4 address with prefix or netmask"), at(0, y++, 4));
-        grid.add(input, at(0, y++, 4));
+        JPanel inputRow = new JPanel(new BorderLayout(8, 0));
+        inputRow.add(input, BorderLayout.CENTER);
+        inputRow.add(history.button(input), BorderLayout.EAST);
+        grid.add(inputRow, at(0, y++, 4));
         grid.add(message, at(0, y++, 4));
         for (int i = 0; i < KEYS.length; i++) values[i] = Ui.valueField();
         for (int r = 0; r < 6; r++, y++) {
@@ -52,37 +71,60 @@ final class CalculatorView {
         grid.add(addressBits, at(1, y++, 3));
         grid.add(dim("Mask bits"), at(0, y, 1));
         grid.add(maskBits, at(1, y++, 3));
-        GridBagConstraints c = at(0, y++, 4);
-        c.insets = new Insets(16, 0, 6, 0);
+        GridBagConstraints c = at(0, y, 1);
+        c.insets.top = 10;
+        grid.add(dim("Contains?"), c);
+        c = at(1, y++, 3);
+        c.insets.top = 10;
+        grid.add(Ui.row(contains, containsInfo), c);
+        c = at(0, y++, 4);
+        c.insets = new Insets(14, 0, 6, 0);
         grid.add(Ui.row(dim("Split into  /"), split, splitInfo), c);
-        grid.add(Ui.table(rows, 60, 150, 270, 130, 100), Ui.fill(at(0, y, 4)));
+        JScrollPane scroll = Ui.table(rows, 60, 150, 270, 130, 100);
+        table = Ui.tableIn(scroll);
+        grid.add(scroll, Ui.fill(at(0, y, 4)));
 
-        JButton copy = new JButton("Copy results");
-        copy.addActionListener(e -> copy(copy));
+        copyResults.setToolTipText("Copy the details above as text (Ctrl+Shift+C)");
+        copyResults.addActionListener(e -> copy());
+        copyTable.setToolTipText("Copy the subnet table, ready to paste into a spreadsheet");
+        copyTable.addActionListener(e -> Ui.copyTable(copyTable, rows));
         export.addActionListener(e -> Ui.exportCsv(export, rows, "subnets-" + input.getText().strip()
                 .replaceAll("[^0-9A-Za-z.]+", "-") + "-split-" + rows.prefix + ".csv"));
         root.add(grid, BorderLayout.CENTER);
-        root.add(Ui.footer(export, copy), BorderLayout.SOUTH);
+        root.add(Ui.footer(export, copyTable, copyResults), BorderLayout.SOUTH);
 
         Ui.onEdit(input, this::refresh);
         Ui.onEdit(split, this::refresh);
+        Ui.onEdit(contains, this::refresh);
         refresh();
     }
 
-    void refresh() {
+    @Override public JComponent root() { return root; }
+
+    @Override public void focusInput() {
+        input.requestFocusInWindow();
+        input.selectAll();
+    }
+
+    @Override public void refresh() {
         Subnet s;
         try {
             s = Subnet.parse(input.getText());
         } catch (IllegalArgumentException e) {
-            Ui.invalid(input, true);
-            status(message, e.getMessage(), true);
+            inputProblem.report(e.getMessage());
+            history.cancel();
             for (JTextField v : values) v.setText("—");
             addressBits.set(0, 0, false);
             maskBits.set(0, 0, false);
-            showSplit(null, 0, " ", false);
+            splitProblem.clear();
+            containsProblem.clear();
+            status(splitInfo, " ", false);
+            status(containsInfo, " ", false);
+            showTable(null, 0);
             return;
         }
-        Ui.invalid(input, false);
+        inputProblem.clear();
+        history.offer(input.getText());
         String text = input.getText().strip();
         boolean classful = text.indexOf('/') < 0 && text.chars().noneMatch(Character::isWhitespace);
         status(message, classful ? "No prefix given, so the classful default /" + s.prefix() + " is used" : " ", false);
@@ -104,29 +146,76 @@ final class CalculatorView {
         try {
             sp = Subnet.parsePrefix(split.getText().strip());
             if (sp < p) throw new IllegalArgumentException("Choose /" + p + " or longer to split a /" + p);
+            splitProblem.clear();
+            long n = s.subnetCount(sp);
+            status(splitInfo, String.format("%,d %s × %,d usable hosts%s", n, n == 1 ? "subnet" : "subnets",
+                    new Subnet(0, sp).usable(),
+                    n > SubnetRows.MAX ? String.format(", showing and exporting the first %,d", SubnetRows.MAX) : ""), false);
+            showTable(s, sp);
         } catch (IllegalArgumentException e) {
-            Ui.invalid(split, true);
-            showSplit(null, 0, e.getMessage(), true);
-            return;
+            splitProblem.report(e.getMessage());
+            sp = -1;
+            showTable(null, 0);
         }
-        Ui.invalid(split, false);
-        long n = s.subnetCount(sp);
-        showSplit(s, sp, String.format("%,d %s × %,d usable hosts%s", n, n == 1 ? "subnet" : "subnets",
-                new Subnet(0, sp).usable(),
-                n > SubnetRows.MAX ? String.format(", showing and exporting the first %,d", SubnetRows.MAX) : ""), false);
+        locate(s, sp);
     }
 
-    private void showSplit(Subnet base, int prefix, String info, boolean error) {
-        status(splitInfo, info, error);
+    private void showTable(Subnet base, int prefix) {
         rows.set(base, prefix);
         export.setEnabled(base != null);
+        copyTable.setEnabled(base != null);
     }
 
-    private void copy(JButton button) {
+    /** The "Contains?" check: is the address inside, and where, including which split subnet it lands in. */
+    private void locate(Subnet s, int splitPrefix) {
+        String text = contains.getText().strip();
+        if (text.isEmpty()) {
+            containsProblem.clear();
+            status(containsInfo, "Enter an address to see where it falls", false);
+            return;
+        }
+        int ip;
+        try {
+            ip = Subnet.parseAddress(text);
+        } catch (IllegalArgumentException e) {
+            containsProblem.report(e.getMessage());
+            return;
+        }
+        containsProblem.clear();
+        String net = format(s.network()) + "/" + s.prefix();
+        if ((ip & s.mask()) != s.network()) {
+            status(containsInfo, "No, it is outside " + net, false);
+            return;
+        }
+        long offset = (ip - s.network()) & 0xFFFFFFFFL;
+        StringBuilder sb = new StringBuilder("Yes: ").append(position(s, offset)).append(" in ").append(net);
+        if (splitPrefix > s.prefix()) {
+            long index = offset >>> (32 - splitPrefix);
+            Subnet sub = s.subnet(index, splitPrefix);
+            sb.append(String.format(". Split subnet #%,d (%s/%d), %s", index + 1, format(sub.network()), splitPrefix,
+                    position(sub, offset - (index << (32 - splitPrefix)))));
+            if (index < rows.getRowCount()) {
+                table.setRowSelectionInterval((int) index, (int) index);
+                table.scrollRectToVisible(table.getCellRect((int) index, 0, true));
+            }
+        }
+        containsInfo.setText(sb.toString());
+        containsInfo.setForeground(Ui.theme.positive());
+    }
+
+    /** Where {@code offset} sits inside {@code s}, in words. */
+    static String position(Subnet s, long offset) {
+        if (s.prefix() >= 31) return String.format("address %,d of %,d", offset + 1, s.total());
+        if (offset == 0) return "the network address";
+        if (offset == s.total() - 1) return "the broadcast address";
+        return String.format("host %,d of %,d", offset, s.usable());
+    }
+
+    @Override public void copy() {
         StringBuilder sb = new StringBuilder("Input: ").append(input.getText().strip()).append('\n');
         for (int i = 0; i < KEYS.length; i++) sb.append(KEYS[i]).append(": ").append(values[i].getText()).append('\n');
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(sb.toString()), null);
-        Ui.flash(button, "Copied");
+        Ui.flash(copyResults, "Copied");
     }
 
     /** Equal-size subnets of the current network, computed from the row index on demand. */

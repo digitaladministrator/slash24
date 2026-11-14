@@ -10,8 +10,10 @@ import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.util.List;
+import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -19,31 +21,40 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 
 /** The VLSM planner page: fit named host requirements into one network, largest first. */
-final class VlsmView {
-    final JPanel root = new JPanel(new BorderLayout());
+final class VlsmView implements Page {
+    private final JPanel root = new JPanel(new BorderLayout());
     private final JTextField network = new JTextField("192.168.10.0/24");
     private final JTextArea needs = new JTextArea("Sales 60\nEngineering 28\nGuest Wi-Fi 12\nManagement 5\nWAN link 2\n");
+    private final JScrollPane needsBox = Ui.roundedScroll(needs);
     private final Ui.Switch pointToPoint = new Ui.Switch(false,
             "Give 1-host needs a /32 and 2-host needs a /31 (RFC 3021) instead of a /30", on -> refresh());
     private final JLabel summary = new JLabel(" ");
+    private final Ui.Problem networkProblem = new Ui.Problem(network, summary);
+    private final Ui.Problem needsProblem = new Ui.Problem(needsBox, summary);
     private final PlanRows rows = new PlanRows();
+    private final History history;
     private final JButton export = new JButton("Export CSV…");
+    private final JButton copyTable = new JButton("Copy table");
 
-    VlsmView() {
+    VlsmView(Preferences prefs) {
+        history = new History(prefs, "history.vlsm");
         network.setFont(Ui.MONO.deriveFont(15f));
+        network.setToolTipText("Ctrl+L to jump here, Down arrow for recent networks");
         needs.setFont(Ui.MONO);
         needs.setRows(6);
         JPanel grid = new JPanel(new GridBagLayout());
         int y = 0;
         grid.add(dim("Network to divide"), at(0, y++, 2));
-        grid.add(network, wide(at(0, y, 1)));
+        JPanel networkRow = new JPanel(new BorderLayout(8, 0));
+        networkRow.add(network, BorderLayout.CENTER);
+        networkRow.add(history.button(network), BorderLayout.EAST);
+        grid.add(networkRow, wide(at(0, y, 1)));
         GridBagConstraints c = at(1, y++, 1);
         c.insets.right = 0;
         grid.add(Ui.row(pointToPoint.label("Use /31 and /32 links"), pointToPoint), c);
         c = at(0, y++, 2);
         c.insets.top = 12;
         grid.add(dim("Subnets needed: a name and host count on each line, e.g. \"Sales 60\""), c);
-        JScrollPane needsBox = Ui.roundedScroll(needs);
         needsBox.setMinimumSize(needsBox.getPreferredSize());
         grid.add(needsBox, at(0, y++, 2));
         grid.add(summary, at(0, y++, 2));
@@ -51,29 +62,47 @@ final class VlsmView {
 
         export.addActionListener(e -> Ui.exportCsv(export, rows, "vlsm-" + network.getText().strip()
                 .replaceAll("[^0-9A-Za-z.]+", "-") + ".csv"));
+        copyTable.setToolTipText("Copy the plan, ready to paste into a spreadsheet (Ctrl+Shift+C)");
+        copyTable.addActionListener(e -> copy());
         root.add(grid, BorderLayout.CENTER);
-        root.add(Ui.footer(export), BorderLayout.SOUTH);
+        root.add(Ui.footer(export, copyTable), BorderLayout.SOUTH);
 
         Ui.onEdit(network, this::refresh);
         Ui.onEdit(needs, this::refresh);
         refresh();
     }
 
-    void refresh() {
+    @Override public JComponent root() { return root; }
+
+    @Override public void focusInput() {
+        network.requestFocusInWindow();
+        network.selectAll();
+    }
+
+    @Override public void copy() {
+        if (rows.getRowCount() > 0) Ui.copyTable(copyTable, rows);
+    }
+
+    @Override public void refresh() {
         Subnet net;
         try {
             net = Subnet.parse(network.getText());
-            Ui.invalid(network, false);
+            networkProblem.clear();
         } catch (IllegalArgumentException e) {
-            Ui.invalid(network, true);
-            fail(e.getMessage());
+            history.cancel();
+            needsProblem.clear();
+            networkProblem.report(e.getMessage());
+            show(null);
             return;
         }
+        history.offer(network.getText());
         Vlsm.Plan plan;
         try {
             plan = Vlsm.plan(net, Vlsm.parse(needs.getText()), pointToPoint.isOn());
+            needsProblem.clear();
         } catch (IllegalArgumentException e) {
-            fail(e.getMessage());
+            needsProblem.report(e.getMessage());
+            show(null);
             return;
         }
         List<Subnet> free = plan.free();
@@ -83,14 +112,13 @@ final class VlsmView {
         int n = plan.allocations().size();
         status(summary, String.format("%d %s use %,d of %,d addresses (%.0f%%).  Free: %s", n, n == 1 ? "subnet" : "subnets",
                 plan.used(), net.total(), 100.0 * plan.used() / net.total(), freeText), false);
-        rows.set(plan);
-        export.setEnabled(true);
+        show(plan);
     }
 
-    private void fail(String message) {
-        status(summary, message, true);
-        rows.set(null);
-        export.setEnabled(false);
+    private void show(Vlsm.Plan plan) {
+        rows.set(plan);
+        export.setEnabled(plan != null);
+        copyTable.setEnabled(plan != null);
     }
 
     static final class PlanRows extends Ui.Rows {

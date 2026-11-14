@@ -74,14 +74,5 @@ final class Vlsm {
     }
 
     /** The unused range {@code [from, to)} as the fewest CIDR blocks. */
-    static List<Subnet> free(long from, long to) {
-        List<Subnet> blocks = new ArrayList<>();
-        while (from < to) {
-            int bits = Math.min(32, Long.numberOfTrailingZeros(from));
-            while (1L << bits > to - from) bits--;
-            blocks.add(new Subnet((int) from, 32 - bits));
-            from += 1L << bits;
-        }
-        return List.copyOf(blocks);
-    }
+    static List<Subnet> free(long from, long to) { return Cidr.range(from, to); }
 }

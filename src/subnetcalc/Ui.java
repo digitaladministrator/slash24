@@ -210,7 +210,70 @@ public final class Ui {
         @Override public void focusLost(FocusEvent e) { e.getComponent().repaint(); }
     };
 
-    // ---- tables and CSV export -----------------------------------------------------------------
+    /**
+     * Shows an input error only once typing pauses, so half-typed input such as {@code 192.168.}
+     * isn't flagged straight away. An error that is already visible updates immediately.
+     */
+    static final class Problem {
+        private final JComponent field;
+        private final JLabel label;
+        private final Timer timer;
+        private String message;
+        private boolean shown;
+
+        Problem(JComponent field, JLabel label) {
+            this.field = field;
+            this.label = label;
+            timer = new Timer(800, e -> show());
+            timer.setRepeats(false);
+        }
+
+        void report(String message) {
+            this.message = message;
+            if (shown) {
+                show();
+            } else {
+                status(label, " ", false);
+                timer.restart();
+            }
+        }
+
+        void clear() {
+            timer.stop();
+            if (shown) invalid(field, false);
+            shown = false;
+        }
+
+        private void show() {
+            shown = true;
+            invalid(field, true);
+            status(label, message, true);
+        }
+    }
+
+    // ---- tables, clipboard and CSV export ------------------------------------------------------
+
+    static final int CLIPBOARD_ROWS = 100_000;
+
+    /** Copies a table as tab-separated text, which pastes straight into spreadsheet cells. */
+    static void copyTable(AbstractButton button, Rows rows) {
+        int n = Math.min(rows.getRowCount(), CLIPBOARD_ROWS);
+        StringBuilder sb = new StringBuilder();
+        tsv(sb, rows.csvHeader());
+        for (int r = 0; r < n; r++) tsv(sb, rows.csvRow(r));
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(sb.toString()), null);
+        flash(button, n < rows.getRowCount() ? String.format("Copied first %,d rows", n) : "Copied");
+    }
+
+    private static void tsv(StringBuilder sb, String[] cells) {
+        for (int i = 0; i < cells.length; i++) {
+            if (i > 0) sb.append('\t');
+            sb.append(cells[i].replace('\t', ' ').replace('\n', ' ').replace('\r', ' '));
+        }
+        sb.append('\n');
+    }
+
+    static JTable tableIn(JScrollPane scroll) { return (JTable) scroll.getViewport().getView(); }
 
     /** Table model whose rows are computed on demand and can also be exported as CSV. */
     abstract static class Rows extends AbstractTableModel {
@@ -425,6 +488,13 @@ public final class Ui {
                 "ScrollPane.background", view, "Viewport.background", view,
                 "ScrollPane.border", new BorderUIResource(new LineBorder(t.border())),
                 "ScrollBar.width", 10, "ScrollBar.background", view, "ScrollBar.track", view, "ScrollBar.thumb", dim,
+                "PopupMenu.background", view, "PopupMenu.foreground", fg,
+                "PopupMenu.border", new BorderUIResource(new CompoundBorder(new LineBorder(t.border()), new EmptyBorder(4, 0, 4, 0))),
+                "MenuItem.background", view, "MenuItem.foreground", fg, "MenuItem.disabledForeground", dim,
+                "MenuItem.selectionBackground", selection, "MenuItem.selectionForeground", fg,
+                "MenuItem.border", new BorderUIResource.EmptyBorderUIResource(5, 4, 5, 12),
+                "Separator.foreground", new ColorUIResource(t.border()), "Separator.background", view,
+                "PopupMenuSeparator.foreground", new ColorUIResource(t.border()), "PopupMenuSeparator.background", view,
                 "ToolTip.background", view, "ToolTip.foreground", fg,
                 "ToolTip.border", new BorderUIResource(new CompoundBorder(new LineBorder(t.border()), new EmptyBorder(4, 6, 4, 6))),
             });
@@ -562,9 +632,23 @@ public final class Ui {
 
         boolean isOn() { return on; }
 
+        /** Changes the state without running the action, e.g. to mirror a setting changed elsewhere. */
+        void setOn(boolean on) {
+            this.on = on;
+            repaint();
+        }
+
         void toggle() {
+            if (!isEnabled()) return;
             on = !on;
             action.accept(on);
+            repaint();
+        }
+
+        @Override public void setEnabled(boolean enabled) {
+            super.setEnabled(enabled);
+            setFocusable(enabled);
+            setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
             repaint();
         }
 
@@ -581,6 +665,7 @@ public final class Ui {
 
         @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = smooth(g);
+            if (!isEnabled()) g2.setComposite(java.awt.AlphaComposite.SrcOver.derive(.45f));
             int w = getWidth(), h = getHeight(), d = h - 6;
             g2.setColor(on ? theme.accent() : Theme.mix(theme.window(), theme.fg(), .3f));
             g2.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
