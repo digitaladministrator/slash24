@@ -2,8 +2,8 @@
 # Builds the Windows packages into dist/ (or the folder given as the first argument):
 #   Slash24-<version>-windows-x64.msi  installer: Start menu entry, optional desktop shortcut, upgrades
 #   Slash24-<version>-windows-x64.zip  portable: unzip anywhere and run Slash24.exe
-# Both include a trimmed Java runtime. Runs on Windows in Git Bash with a JDK 25; the .msi also needs
-# the WiX Toolset (GitHub's windows-2022 runners have it).
+# Both include a trimmed Java runtime. Runs on Windows in Git Bash with a JDK 25, 7-Zip, and the WiX
+# Toolset for the .msi (GitHub's windows-2022 runners have both).
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT=${1:-dist}
@@ -14,6 +14,7 @@ UPGRADE_UUID=dc304c02-b662-4c89-a91a-e4c3b97fd16d
 ./build.sh
 rm -rf build/win
 mkdir -p build/win/input "$OUT"
+OUT=$(cd "$OUT" && pwd)
 cp build/slash24.jar build/win/input/
 
 # The smallest runtime that runs the app. --generate-cds-archive pre-builds Java's class cache for it.
@@ -32,8 +33,8 @@ jpackage --type app-image "${COMMON[@]}" --input build/win/input --main-jar slas
 cp LICENSE build/win/image/Slash24/
 
 rm -f "$OUT"/Slash24-*-windows-x64.*
-powershell -NoProfile -Command \
-    "Compress-Archive -Path 'build/win/image/Slash24' -DestinationPath '$OUT/Slash24-$VERSION-windows-x64.zip'"
+# 7-Zip writes standard zip paths (Windows PowerShell's Compress-Archive writes backslashes).
+(cd build/win/image && 7z a -tzip -mx=9 -bso0 "$OUT/Slash24-$VERSION-windows-x64.zip" Slash24)
 
 jpackage --type msi "${COMMON[@]}" --app-image build/win/image/Slash24 --dest build/win/msi \
     --win-menu --win-menu-group Slash24 --win-shortcut --win-shortcut-prompt --win-dir-chooser \
