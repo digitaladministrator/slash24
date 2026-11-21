@@ -4,6 +4,38 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.2] - 2026-11-21
+
+### Fixed
+- **IOS config page no longer freezes** when a field holds more text than Java can save (around
+  400 static routes): the config keeps updating, and a note says the text won't be remembered.
+- **Layer 3 switch:** the router–switch link is never a /32, which gave both ends the same address.
+- **GigabitEthernet switch ports** with an auto uplink no longer fail with "is also one of the
+  access ports": the uplink takes the first port after the access ports.
+- A `?` in a subnet name no longer ends up in a description, where pasting it into IOS opens help.
+- Huge interface numbers (e.g. `Gig0/2147483647`) give a clear error instead of a wrong config.
+- Native VLAN 1 is no longer renamed (IOS refuses), and the reserved VLANs 1002–1005 are rejected.
+- Repeated long subnet names stay within IOS's 32-character VLAN name limit.
+- Addresses pasted from web pages and documents work: non-breaking and other Unicode spaces count as
+  spaces, invisible zero-width characters are ignored, and static routes can use a tab.
+- CSV export and **Copy table** put an apostrophe before names starting with `=`, `+`, `-` or `@`,
+  so spreadsheets show them as text instead of running them as formulas.
+
+### Changed
+- **The IOS config page catches more mistakes** before you paste them:
+  - a password that is a single digit, which IOS reads as an encryption type;
+  - an uplink on its subnet's network or broadcast address, or a next hop outside the uplink subnet;
+  - an uplink subnet that overlaps the plan's network;
+  - more than 48 access ports on one switch.
+- **VLSM planner:** an entry like `VLAN10` now asks for a space before the host count (`VLAN10 20`
+  or `VLAN 10`) instead of quietly meaning 10 hosts. `Sales:60`, `Sales-60` and a bare `12` still work.
+- Address octets can have at most 3 digits: `192.168.001.010` still works, `0010.0.0.1` doesn't.
+
+### Upgrading
+- Settings carry over. A saved IOS config setup that used to produce a config may now show an
+  error saying what to change; those configs used ports or addresses that don't work on a device.
+- 256 tests now, up from 192.
+
 ## [1.4.1] - 2026-11-14
 
 ### Added
@@ -220,6 +252,7 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.4.2]: https://github.com/digitaladministrator/slash24/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/digitaladministrator/slash24/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/digitaladministrator/slash24/compare/v1.3.4...v1.4.0
 [1.3.4]: https://github.com/digitaladministrator/slash24/compare/v1.3.3...v1.3.4
