@@ -15,7 +15,7 @@ import javax.swing.Timer;
 
 /** The last few valid inputs of one field, kept in the user's preferences. */
 final class History {
-    static final int MAX = 10;
+    static final int MAX = 10, MAX_LENGTH = 200;
 
     private final Preferences prefs;
     private final String key;
@@ -40,7 +40,8 @@ final class History {
     void cancel() { settle.stop(); }
 
     void add(String text) {
-        if (text == null || text.isBlank()) return;
+        // Real inputs are short; the cap keeps all MAX entries within the preferences value limit.
+        if (text == null || text.isBlank() || text.length() > MAX_LENGTH) return;
         items.remove(text);
         items.addFirst(text);
         while (items.size() > MAX) items.removeLast();

@@ -407,10 +407,16 @@ final class ConfigView implements Page {
         f.setFont(Ui.MONO);
         apply.add(() -> set.accept(f.getText().strip()));
         Ui.onEdit(f, () -> {
-            prefs.put("ios." + key, f.getText());
             refresh();
+            remember("ios." + key, f.getText());
         });
         return f;
+    }
+
+    /** Saves a field; refresh runs first, so text too long to save still updates the config. */
+    private void remember(String key, String value) {
+        if (Ui.remember(prefs, key, value) || result == null) return;
+        status(info, "This text is too long to be remembered next time", false);
     }
 
     private static <T extends JComponent> T tip(T c, String text) {
@@ -484,8 +490,8 @@ final class ConfigView implements Page {
         a.setFont(Ui.MONO);
         apply.add(() -> set.accept(a.getText()));
         Ui.onEdit(a, () -> {
-            prefs.put("ios." + key, a.getText());
             refresh();
+            remember("ios." + key, a.getText());
         });
         JScrollPane box = Ui.roundedScroll(a);
         box.setMinimumSize(box.getPreferredSize());

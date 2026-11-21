@@ -70,6 +70,8 @@ public final class SubnetTest {
         cidr();
         keyBindings();
         ios();
+        iosEdgeCases();
+        remember();
         helpCoverage();
 
         if (failures > 0) {
@@ -447,6 +449,91 @@ public final class SubnetTest {
             } catch (java.util.prefs.BackingStoreException ignored) {
                 // a leftover empty test node is harmless
             }
+        }
+    }
+
+    /** Inputs that used to produce broken configs or wrong errors (1.4.2). */
+    private static void iosEdgeCases() {
+        Vlsm.Plan two = Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse("Sales 60\nHR 20"), false);
+
+        // a layer 3 switch must not use a /32 as its link: both ends would get the same address
+        IosConfig.Options o = new IosConfig.Options();
+        o.switchKind = IosConfig.SwitchKind.LAYER3;
+        rejects("ios l3 with only a /32 link", Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse("Sales 60\nCore 1"), true), o);
+        IosConfig.Result r = IosConfig.generate(
+                Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse("Sales 60\nCore 2\nLoop 1"), true), o);
+        has("ios l3 picks the /31", r.router(), " ip address 192.168.10.64 255.255.255.254\n");
+        has("ios l3 switch end of /31", r.switchConfig(), " ip address 192.168.10.65 255.255.255.254\n");
+
+        // gigabit access ports and an auto uplink used to collide on Gi0/1
+        o = new IosConfig.Options();
+        o.switchPortType = "GigabitEthernet";
+        r = IosConfig.generate(two, o);
+        has("ios auto uplink after gig access ports", r.switchConfig(), "interface GigabitEthernet0/5\n description Trunk to R1\n");
+        o.switchStacked = true;
+        has("ios stacked auto uplink unchanged", IosConfig.generate(two, o).switchConfig(), "interface GigabitEthernet1/1/1\n");
+
+        // '?' in a description triggers IOS help when pasted
+        o = new IosConfig.Options();
+        r = IosConfig.generate(Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse("Sales 60\nWAN?link 2"), false), o);
+        has("ios description drops ?", r.router(), " description WANlink\n");
+        missing("ios no ? anywhere", r.router(), "?");
+
+        // interface numbers are capped so later ports can't overflow
+        o = new IosConfig.Options();
+        o.switchKind = IosConfig.SwitchKind.NONE;
+        o.routing = IosConfig.Routing.PORT_PER_SUBNET;
+        o.lanPort = "Gig0/2147483647";
+        rejects("ios huge port number", two, o);
+        o.lanPort = "Gig0/99999999999";
+        rejects("ios port number past int", two, o);
+        o.lanPort = "Gig0/9999";
+        has("ios 4-digit port numbers count up", IosConfig.generate(two, o).router(), "interface Gig0/10000\n");
+
+        // VLAN 1 can't be renamed; 1002–1005 are reserved
+        o = new IosConfig.Options();
+        o.nativeVlan = 1;
+        r = IosConfig.generate(two, o);
+        missing("ios native vlan 1 not renamed", r.switchConfig(), " name NATIVE");
+        has("ios native vlan 1 on the trunk", r.switchConfig(), " switchport trunk native vlan 1\n");
+        o.nativeVlan = 1002;
+        rejects("ios reserved native vlan", two, o);
+
+        // duplicate long names stay within the 32-character VLAN name limit
+        String long40 = "A".repeat(40);
+        r = IosConfig.generate(Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse(long40 + " 20\n" + long40 + " 20"), false),
+                new IosConfig.Options());
+        has("ios first long name", r.switchConfig(), " name " + "A".repeat(32) + "\n");
+        has("ios duplicate long name", r.switchConfig(), " name " + "A".repeat(30) + "_2\n");
+    }
+
+    /** Text too long for Java preferences is skipped instead of throwing (1.4.2). */
+    private static void remember() {
+        java.util.prefs.Preferences p = java.util.prefs.Preferences.userRoot().node("slash24-test");
+        try {
+            eq("remember short", true, Ui.remember(p, "k", "10.0.0.0/8 192.168.1.1"));
+            eq("remember too long", false, Ui.remember(p, "k", "x".repeat(java.util.prefs.Preferences.MAX_VALUE_LENGTH + 1)));
+            eq("remember keeps last value", "10.0.0.0/8 192.168.1.1", p.get("k", null));
+            History h = new History(p, "h");
+            h.add("0".repeat(9000) + "10.0.0.1/24"); // valid but absurd; used to throw from the history timer
+            h.add("10.0.0.0/8");
+            eq("history skips huge entries", "10.0.0.0/8", p.get("h", null));
+        } finally {
+            try {
+                p.removeNode();
+            } catch (java.util.prefs.BackingStoreException e) {
+                // only a scratch node
+            }
+        }
+    }
+
+    private static void rejects(String name, Vlsm.Plan plan, IosConfig.Options o) {
+        checks++;
+        try {
+            IosConfig.generate(plan, o);
+            fail(name + ": should be rejected");
+        } catch (IllegalArgumentException expected) {
+            // rejected with a message for the user
         }
     }
 

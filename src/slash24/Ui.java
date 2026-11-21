@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.prefs.Preferences;
 import javax.swing.AbstractButton;
 import javax.swing.Box;
 import javax.swing.ButtonModel;
@@ -177,6 +178,16 @@ public final class Ui {
         c.weighty = 1;
         c.insets.right = 0;
         return c;
+    }
+
+    /**
+     * Saves a preference unless it is longer than Java preferences allow, in which case the last saved
+     * value is kept. Returns whether it was saved.
+     */
+    static boolean remember(Preferences prefs, String key, String value) {
+        if (value.length() > Preferences.MAX_VALUE_LENGTH) return false;
+        prefs.put(key, value);
+        return true;
     }
 
     static void onEdit(JTextComponent field, Runnable action) {

@@ -84,7 +84,8 @@ final class IosConfig {
     record Result(String router, String switchConfig) { }
 
     private static final Pattern HOSTNAME = Pattern.compile("[A-Za-z][A-Za-z0-9-]{0,62}");
-    private static final Pattern INTERFACE = Pattern.compile("[A-Za-z][A-Za-z-]*\\d+(/\\d+)*");
+    /** Up to 4 digits per number, so increasing the last one for later ports can't overflow. */
+    private static final Pattern INTERFACE = Pattern.compile("[A-Za-z][A-Za-z-]*\\d{1,4}(/\\d{1,4})*");
     private static final Pattern DOMAIN = Pattern.compile("[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*");
     private static final Pattern TRAILING_NUMBER = Pattern.compile("(.*?)(\\d+)$");
     private static final Pattern USERNAME = Pattern.compile("[A-Za-z0-9_.@-]{1,32}");
@@ -133,9 +134,11 @@ final class IosConfig {
                 (o.smallSubnetsAreLinks && a.need().hosts() <= 2 ? links : lans).add(a);
             }
             if (layer3) {
-                check(!links.isEmpty(), "A layer 3 switch needs a 2-host link in the plan (for example \"Core link 2\") "
+                // a /32 has a single address, so it can't number both ends of the router–switch link
+                transit = links.stream().filter(a -> a.subnet().usable() >= 2).findFirst().orElse(null);
+                check(transit != null, "A layer 3 switch needs a 2-host link in the plan (for example \"Core link 2\") "
                         + "to connect it to the router, with 1–2 host subnets treated as links");
-                transit = links.removeFirst();
+                links.remove(transit);
             }
             names();
             if (hasSwitch) switchSettings();
@@ -154,7 +157,8 @@ final class IosConfig {
             }
             check(!lans.isEmpty(), "The plan has no LAN subnets to put in VLANs");
             check(o.vlanStep > 0, "VLAN ID step must be at least 1");
-            check(o.nativeVlan >= 0 && o.nativeVlan <= 4094, "Native VLAN must be between 1 and 4094, or empty");
+            check(o.nativeVlan >= 0 && o.nativeVlan <= 4094 && (o.nativeVlan < 1002 || o.nativeVlan > 1005),
+                    "Native VLAN must be from 1 to 1001 or 1006 to 4094, or empty");
             for (int i = 0; i < lans.size(); i++) {
                 int vlan = o.vlanStart + i * o.vlanStep;
                 check(vlan >= 2 && vlan <= 4094 && (vlan < 1002 || vlan > 1005),
@@ -167,11 +171,15 @@ final class IosConfig {
 
         private void switchSettings() {
             check(o.accessPorts >= 0 && o.accessPorts <= 48, "Access ports per VLAN must be between 0 and 48");
-            switchUplink = isAuto(o.uplinkPort)
-                    ? (o.switchStacked ? "GigabitEthernet1/1/1" : "GigabitEthernet0/1")
-                    : numbered(o.uplinkPort, 0, "Switch uplink port");
             String prefix = accessPrefix();
             int lastAccess = o.accessPorts * lans.size();
+            if (isAuto(o.uplinkPort)) {
+                switchUplink = o.switchStacked ? "GigabitEthernet1/1/1" : "GigabitEthernet0/1";
+                // gigabit access ports start at the same 0/1, so take the first port after them
+                if (switchUplink.startsWith(prefix)) switchUplink = prefix + (lastAccess + 1);
+            } else {
+                switchUplink = numbered(o.uplinkPort, 0, "Switch uplink port");
+            }
             if (needsSwitchUplink() && switchUplink.startsWith(prefix)) {
                 String rest = switchUplink.substring(prefix.length());
                 check(!rest.matches("\\d+") || Integer.parseInt(rest) > lastAccess,
@@ -443,7 +451,7 @@ final class IosConfig {
                 out.line("vlan " + vlans.get(i));
                 out.line(" name " + lanNames.get(i));
             }
-            if (o.nativeVlan > 0 && stick) {
+            if (o.nativeVlan > 1 && stick) { // VLAN 1 always exists and can't be renamed
                 out.line("vlan " + o.nativeVlan);
                 out.line(" name NATIVE");
             }
@@ -666,15 +674,19 @@ final class IosConfig {
         return n.length() > 32 ? n.substring(0, 32) : n;
     }
 
-    /** Free text for descriptions, stripped of anything that could end the command line. */
+    /** Free text for descriptions, stripped of anything that could end the command line or, like '?', trigger CLI help. */
     private static String clean(String s) {
-        String c = s.replaceAll("[\\p{Cntrl}]", " ").strip();
+        String c = s.replaceAll("[\\p{Cntrl}]", " ").replace("?", "").strip();
         return c.length() > 200 ? c.substring(0, 200) : c;
     }
 
+    /** {@code name}, or with a {@code _2}, {@code _3}… suffix if taken, still within the 32-character limit. */
     private static String unique(String name, Set<String> used) {
         String n = name;
-        for (int i = 2; !used.add(n); i++) n = name + "_" + i;
+        for (int i = 2; !used.add(n); i++) {
+            String suffix = "_" + i;
+            n = name.substring(0, Math.min(name.length(), 32 - suffix.length())) + suffix;
+        }
         return n;
     }
 
