@@ -71,6 +71,7 @@ public final class SubnetTest {
         keyBindings();
         ios();
         iosEdgeCases();
+        parsingEdgeCases();
         remember();
         helpCoverage();
 
@@ -560,6 +561,58 @@ public final class SubnetTest {
         rejects("ios no gig port left for the uplink", two, o);
         o.accessPorts = 23;
         has("ios gig uplink on the last port", IosConfig.generate(two, o).switchConfig(), "interface GigabitEthernet0/47\n");
+    }
+
+    /** Pasted text, ambiguous names and spreadsheet formulas (1.4.2). */
+    private static void parsingEdgeCases() {
+        // non-breaking, tab and zero-width characters from pasted text
+        eq("nbsp before prefix", 24, Subnet.parse("10.0.0.1 24").prefix());
+        eq("nbsp around input", "10.0.0.0", format(Subnet.parse(" 10.0.0.1/8 ").network()));
+        eq("zero-width in address", "10.0.0.1", format(Subnet.parse("10.0.​0.1/24").address()));
+        eq("clean keeps plain text", "10.0.0.1 24", Subnet.clean("  10.0.0.1 24\t"));
+        eq("cidr list with nbsp", "[10.0.0.0/24]", blocks(Cidr.parseList("10.0.0.0 /24")));
+        eq("vlsm with nbsp", 60L, Vlsm.parse("Sales 60").getFirst().hosts());
+
+        // static routes separated by a tab or a non-breaking space
+        Vlsm.Plan one = Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse("Sales 60"), false);
+        IosConfig.Options o = new IosConfig.Options();
+        o.staticRoutes = "10.0.0.0/8\t192.168.10.62\n172.16.0.0/12 192.168.10.62";
+        String router = IosConfig.generate(one, o).router();
+        has("static route with a tab", router, "ip route 10.0.0.0 255.0.0.0 192.168.10.62\n");
+        has("static route with nbsp", router, "ip route 172.16.0.0 255.240.0.0 192.168.10.62\n");
+
+        // octets of up to 3 digits; leading zeros within that are decimal
+        eq("leading zeros", "192.168.1.10", format(Subnet.parse("192.168.001.010/24").address()));
+        for (String bad : new String[] {"0010.0.0.1/24", "0".repeat(9000) + "10.0.0.1/24"}) {
+            checks++;
+            try {
+                Subnet.parse(bad);
+                fail("should reject " + bad.length() + "-character \"" + bad.substring(0, 10) + "…\"");
+            } catch (IllegalArgumentException e) {
+                if (e.getMessage().length() > 100) fail("error message for long input is " + e.getMessage().length() + " characters");
+            }
+        }
+
+        // a name run into its host count is ambiguous
+        for (String bad : new String[] {"VLAN10", "Sales60", "Café12"}) {
+            checks++;
+            try {
+                Vlsm.parse(bad);
+                fail("vlsm should ask for a space in \"" + bad + "\"");
+            } catch (IllegalArgumentException expected) {
+                // the message suggests both readings
+            }
+        }
+        eq("vlsm name with number", "VLAN10", Vlsm.parse("VLAN10 20").getFirst().name());
+        eq("vlsm count after colon", 60L, Vlsm.parse("Sales:60").getFirst().hosts());
+        eq("vlsm count after dash", "Sales", Vlsm.parse("Sales-60").getFirst().name());
+        eq("vlsm bare count", 12L, Vlsm.parse("12").getFirst().hosts());
+
+        // spreadsheet formulas in exported names
+        eq("csv formula", "\"'=HYPERLINK(\"\"x\"\")\",60\r\n", Csv.line("=HYPERLINK(\"x\")", "60"));
+        for (String f : new String[] {"+1", "-1", "@SUM(A1)", "\tx"}) eq("csv defuse " + f.strip(), "'" + f, Csv.defuse(f));
+        eq("csv plain name untouched", "Sales", Csv.defuse("Sales"));
+        eq("csv empty untouched", "", Csv.defuse(""));
     }
 
     /** Text too long for Java preferences is skipped instead of throwing (1.4.2). */

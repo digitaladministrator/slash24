@@ -29,12 +29,17 @@ final class Vlsm {
         List<Need> needs = new ArrayList<>();
         int entry = 0;
         for (String raw : text.split("\\R|[,;]")) {
-            String s = raw.strip();
+            String s = Subnet.clean(raw);
             if (s.isEmpty()) continue;
             entry++;
             int i = s.length();
             while (i > 0 && s.charAt(i - 1) >= '0' && s.charAt(i - 1) <= '9') i--;
             if (i == s.length()) throw new IllegalArgumentException("Entry " + entry + " (\"" + s + "\") must end with a host count");
+            if (i > 0 && Character.isLetter(s.charAt(i - 1))) {
+                // "VLAN10" could be a name or 10 hosts; make the user say which
+                throw new IllegalArgumentException("Entry " + entry + " (\"" + s + "\") needs a space before the host count, e.g. \""
+                        + s + " 20\" or \"" + s.substring(0, i) + " " + s.substring(i) + "\"");
+            }
             String digits = s.substring(i);
             long hosts = digits.length() > 10 ? Long.MAX_VALUE : Long.parseLong(digits);
             if (hosts < 1) throw new IllegalArgumentException("Entry " + entry + " (\"" + s + "\") needs at least 1 host");

@@ -57,7 +57,7 @@ public record Subnet(int address, int prefix) {
      * {@code 10.0.0.5 24}. A bare address gets its classful default prefix.
      */
     public static Subnet parse(String text) {
-        String s = text.strip();
+        String s = clean(text);
         if (s.isEmpty()) throw new IllegalArgumentException("Enter an address, e.g. 192.168.1.10/24");
         int cut = s.indexOf('/');
         for (int i = 0; cut < 0 && i < s.length(); i++) if (Character.isWhitespace(s.charAt(i))) cut = i;
@@ -68,22 +68,33 @@ public record Subnet(int address, int prefix) {
         return new Subnet(parseAddress(s.substring(0, cut).strip()), parseMask(s.substring(cut + 1).strip()));
     }
 
+    /**
+     * Text pasted from web pages and documents often carries non-breaking or other Unicode spaces, which
+     * {@link String#strip()} keeps, and invisible zero-width characters. Turns the spaces into plain ones,
+     * drops the invisible characters, then strips.
+     */
+    public static String clean(String text) {
+        return text.replaceAll("[\\u200B-\\u200D\\u2060\\uFEFF]", "").replaceAll("\\h", " ").strip();
+    }
+
     public static int classfulPrefix(int address) {
         int o = address >>> 24;
         return o < 128 ? 8 : o < 192 ? 16 : o < 224 ? 24 : 32;
     }
 
     public static int parseAddress(String s) {
-        int value = 0, octet = -1, dots = 0;
+        int value = 0, octet = -1, dots = 0, digits = 0;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             if (c == '.') {
                 if (octet < 0 || ++dots > 3) throw badAddress(s);
                 value = value << 8 | octet;
                 octet = -1;
+                digits = 0;
             } else if (c >= '0' && c <= '9') {
                 octet = octet < 0 ? c - '0' : octet * 10 + c - '0';
-                if (octet > 255) throw badAddress(s);
+                // up to 3 digits, so 010 is ten (as in 192.168.001.010) but 0000010 is rejected
+                if (octet > 255 || ++digits > 3) throw badAddress(s);
             } else {
                 throw badAddress(s);
             }
@@ -118,6 +129,7 @@ public record Subnet(int address, int prefix) {
     }
 
     private static IllegalArgumentException badAddress(String s) {
+        if (s.length() > 40) s = s.substring(0, 40) + "…"; // keep pasted junk from flooding the message
         return new IllegalArgumentException("\"" + s + "\" is not a valid IPv4 address");
     }
 

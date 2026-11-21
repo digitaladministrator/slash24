@@ -125,7 +125,7 @@ final class CalculatorView implements Page {
         }
         inputProblem.clear();
         history.offer(input.getText());
-        String text = input.getText().strip();
+        String text = Subnet.clean(input.getText());
         boolean classful = text.indexOf('/') < 0 && text.chars().noneMatch(Character::isWhitespace);
         status(message, classful ? "No prefix given, so the classful default /" + s.prefix() + " is used" : " ", false);
 
@@ -144,7 +144,7 @@ final class CalculatorView implements Page {
 
         int sp;
         try {
-            sp = Subnet.parsePrefix(split.getText().strip());
+            sp = Subnet.parsePrefix(Subnet.clean(split.getText()));
             if (sp < p) throw new IllegalArgumentException("Choose /" + p + " or longer to split a /" + p);
             splitProblem.clear();
             long n = s.subnetCount(sp);
@@ -168,7 +168,7 @@ final class CalculatorView implements Page {
 
     /** The "Contains?" check: is the address inside, and where, including which split subnet it lands in. */
     private void locate(Subnet s, int splitPrefix) {
-        String text = contains.getText().strip();
+        String text = Subnet.clean(contains.getText());
         if (text.isEmpty()) {
             containsProblem.clear();
             status(containsInfo, "Enter an address to see where it falls", false);

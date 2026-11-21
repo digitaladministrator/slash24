@@ -147,7 +147,7 @@ final class ToolsView implements Page {
         networksProblem.clear();
         long a, b;
         try {
-            a = Subnet.parseAddress(from.getText().strip()) & 0xFFFFFFFFL;
+            a = Subnet.parseAddress(Subnet.clean(from.getText())) & 0xFFFFFFFFL;
             fromProblem.clear();
         } catch (IllegalArgumentException e) {
             toProblem.clear();
@@ -156,7 +156,7 @@ final class ToolsView implements Page {
             return;
         }
         try {
-            b = Subnet.parseAddress(to.getText().strip()) & 0xFFFFFFFFL;
+            b = Subnet.parseAddress(Subnet.clean(to.getText())) & 0xFFFFFFFFL;
             if (b < a) throw new IllegalArgumentException("The last address can't come before the first");
             toProblem.clear();
         } catch (IllegalArgumentException e) {

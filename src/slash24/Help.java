@@ -35,7 +35,7 @@ final class Help {
             "The address block the VLSM planner fits your subnets into.",
             "192.168.10.0/24")),
         Map.entry("Subnets needed: a name and host count on each line, e.g. \"Sales 60\"", e(
-            "One subnet per line: a name followed by how many hosts it needs. Commas also separate entries.",
+            "One subnet per line: a name, then a space or colon, then how many hosts it needs. Commas also separate entries.",
             "Sales 60\nWAN link 2")),
         Map.entry("Use /31 and /32 links", e(
             "On: 2-host needs get a /31 (RFC 3021) and 1-host needs a /32. Off: both get a /30, the traditional point-to-point size.",

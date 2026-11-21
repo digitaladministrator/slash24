@@ -301,7 +301,7 @@ public final class Ui {
     private static void tsv(StringBuilder sb, String[] cells) {
         for (int i = 0; i < cells.length; i++) {
             if (i > 0) sb.append('\t');
-            sb.append(cells[i].replace('\t', ' ').replace('\n', ' ').replace('\r', ' '));
+            sb.append(Csv.defuse(cells[i]).replace('\t', ' ').replace('\n', ' ').replace('\r', ' '));
         }
         sb.append('\n');
     }

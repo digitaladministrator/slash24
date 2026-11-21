@@ -405,7 +405,7 @@ final class ConfigView implements Page {
     private JTextField text(String key, String fallback, int columns, Consumer<String> set) {
         JTextField f = new JTextField(prefs.get("ios." + key, fallback), columns);
         f.setFont(Ui.MONO);
-        apply.add(() -> set.accept(f.getText().strip()));
+        apply.add(() -> set.accept(Subnet.clean(f.getText())));
         Ui.onEdit(f, () -> {
             refresh();
             remember("ios." + key, f.getText());
@@ -428,7 +428,7 @@ final class ConfigView implements Page {
     private JTextField number(String key, int fallback, String what, Integer blankValue, IntConsumer set) {
         JTextField f = text(key, blankValue != null && fallback == blankValue ? "" : String.valueOf(fallback), 6, v -> { });
         apply.add(() -> {
-            String t = f.getText().strip();
+            String t = Subnet.clean(f.getText());
             if (t.isEmpty() && blankValue != null) {
                 set.accept(blankValue);
                 return;

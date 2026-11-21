@@ -15,7 +15,7 @@ final class Csv {
     private static StringBuilder append(StringBuilder sb, String[] cells) {
         for (int i = 0; i < cells.length; i++) {
             if (i > 0) sb.append(',');
-            String c = cells[i];
+            String c = defuse(cells[i]);
             if (c.indexOf(',') >= 0 || c.indexOf('"') >= 0 || c.indexOf('\n') >= 0 || c.indexOf('\r') >= 0) {
                 sb.append('"').append(c.replace("\"", "\"\"")).append('"');
             } else {
@@ -23,6 +23,14 @@ final class Csv {
             }
         }
         return sb.append("\r\n");
+    }
+
+    /**
+     * Spreadsheets run a cell starting with = + - or @ as a formula, so a subnet name like
+     * {@code =HYPERLINK(...)} would run on opening. A leading apostrophe makes it plain text.
+     */
+    static String defuse(String cell) {
+        return !cell.isEmpty() && "=+-@\t\r".indexOf(cell.charAt(0)) >= 0 ? "'" + cell : cell;
     }
 
     static void write(Path path, Ui.Rows rows) throws IOException {

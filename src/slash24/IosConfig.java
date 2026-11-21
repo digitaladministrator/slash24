@@ -423,7 +423,7 @@ final class IosConfig {
             int line = 0;
             for (String raw : o.staticNat.split("\\R")) {
                 line++;
-                String s = raw.strip();
+                String s = Subnet.clean(raw);
                 if (s.isEmpty()) continue;
                 String[] t = s.split("\\s+");
                 String where = "Static NAT line " + line;
@@ -446,7 +446,7 @@ final class IosConfig {
             int line = 0;
             for (String raw : o.staticRoutes.split("\\R")) {
                 line++;
-                String s = raw.strip();
+                String s = Subnet.clean(raw);
                 if (s.isEmpty()) continue;
                 int cut = s.lastIndexOf(' ');
                 check(cut > 0, "Static route line " + line + ": use \"network/prefix next-hop\"");

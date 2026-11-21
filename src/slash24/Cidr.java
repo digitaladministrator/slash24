@@ -33,7 +33,7 @@ final class Cidr {
         List<Subnet> nets = new ArrayList<>();
         int entry = 0;
         for (String raw : text.split("\\R|[,;]")) {
-            String s = raw.strip();
+            String s = Subnet.clean(raw);
             if (s.isEmpty()) continue;
             entry++;
             try {
