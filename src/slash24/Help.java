@@ -100,7 +100,7 @@ final class Help {
             "The untagged VLAN on the trunk. Empty keeps the default (VLAN 1) and leaves the setting out.",
             "99")),
         Map.entry("Access ports per VLAN", e(
-            "How many switch ports to assign to each VLAN, numbered from port 1. 0 or empty adds none.",
+            "How many switch ports to assign to each VLAN, numbered from port 1, up to 48 in all. 0 or empty adds none.",
             "2  → Fa0/1–2 for the first VLAN, Fa0/3–4 for the next")),
         Map.entry("Management VLAN", e(
             "The VLAN the layer 2 switch gets its own address in, for remote access. auto picks a VLAN named like "
@@ -166,7 +166,7 @@ final class Help {
             "The uplink's address with a prefix, or dhcp to get one from the provider.",
             "203.0.113.2/30  or  dhcp")),
         Map.entry("Next hop", e(
-            "The provider's router, used for the default route. Empty means no default route.",
+            "The provider's router, in the uplink subnet, used for the default route. Empty means no default route.",
             "203.0.113.1")),
         Map.entry("NAT", e(
             "Off; PAT, where every inside host shares the uplink address; or Pool, a range of public addresses.",

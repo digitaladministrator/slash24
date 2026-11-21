@@ -83,6 +83,8 @@ final class IosConfig {
     /** {@code switchConfig} is null when there is no switch to configure. */
     record Result(String router, String switchConfig) { }
 
+    /** The most access ports one switch has (a 48-port model, or one member of a stack). */
+    static final int MAX_SWITCH_PORTS = 48;
     private static final Pattern HOSTNAME = Pattern.compile("[A-Za-z][A-Za-z0-9-]{0,62}");
     /** Up to 4 digits per number, so increasing the last one for later ports can't overflow. */
     private static final Pattern INTERFACE = Pattern.compile("[A-Za-z][A-Za-z-]*\\d{1,4}(/\\d{1,4})*");
@@ -173,10 +175,16 @@ final class IosConfig {
             check(o.accessPorts >= 0 && o.accessPorts <= 48, "Access ports per VLAN must be between 0 and 48");
             String prefix = accessPrefix();
             int lastAccess = o.accessPorts * lans.size();
+            check(lastAccess <= MAX_SWITCH_PORTS, lans.size() + " VLANs × " + o.accessPorts + " access ports need "
+                    + lastAccess + " ports, more than a " + MAX_SWITCH_PORTS + "-port switch has: lower access ports per VLAN");
             if (isAuto(o.uplinkPort)) {
                 switchUplink = o.switchStacked ? "GigabitEthernet1/1/1" : "GigabitEthernet0/1";
                 // gigabit access ports start at the same 0/1, so take the first port after them
-                if (switchUplink.startsWith(prefix)) switchUplink = prefix + (lastAccess + 1);
+                if (switchUplink.startsWith(prefix)) {
+                    check(!needsSwitchUplink() || lastAccess < MAX_SWITCH_PORTS, "The access ports use every port of a "
+                            + MAX_SWITCH_PORTS + "-port switch, leaving none for the uplink: lower access ports per VLAN");
+                    switchUplink = prefix + (lastAccess + 1);
+                }
             } else {
                 switchUplink = numbered(o.uplinkPort, 0, "Switch uplink port");
             }
@@ -227,6 +235,8 @@ final class IosConfig {
             for (String[] p : new String[][] {{a.enableSecret, "enable secret"}, {a.consolePassword, "console password"},
                     {a.userPassword, "user password"}, {a.vtyPassword, "VTY password"}}) {
                 check(p[0].isEmpty() || PASSWORD.matcher(p[0]).matches(), device + " " + p[1] + " can't contain spaces or '?'");
+                // IOS reads a lone digit as the encryption type ("enable secret 5 <hash>"), so the command is incomplete
+                check(!p[0].matches("\\d"), device + " " + p[1] + " can't be a single digit");
             }
             boolean ssh = a.remote == Remote.SSH || a.remote == Remote.BOTH;
             check(a.banner.indexOf('#') < 0 && !a.banner.matches(".*\\p{Cntrl}.*"), device + " banner can't contain '#'");
@@ -344,17 +354,28 @@ final class IosConfig {
                 boolean viaDhcp = o.uplinkAddress.strip().equalsIgnoreCase("dhcp");
                 out.line("interface " + uplinkName);
                 out.line(" description Internet uplink");
+                Subnet up = null;
                 if (viaDhcp) {
                     out.line(" ip address dhcp");
                 } else {
-                    Subnet up = parseWithPrefix(o.uplinkAddress, "Uplink address");
+                    up = parseWithPrefix(o.uplinkAddress, "Uplink address");
+                    String upNet = format(up.network()) + "/" + up.prefix();
                     check(up.prefix() <= 31, "Uplink address needs a prefix of /31 or shorter");
+                    check(isHost(up, up.address()), "Uplink address can't be the network or broadcast address of " + upNet);
+                    Subnet lan = plan.network();
+                    check(!overlaps(up, lan), "The uplink subnet " + upNet + " overlaps the plan's network "
+                            + format(lan.network()) + "/" + lan.prefix());
                     out.line(" ip address " + format(up.address()) + " " + format(up.mask()));
                 }
                 if (natOn) out.line(" ip nat outside");
                 out.line(" no shutdown");
                 if (!o.nextHop.isBlank()) {
                     check(isAddress(o.nextHop), "Next hop must be an IPv4 address, or empty for no default route");
+                    if (up != null) { // with dhcp the uplink subnet isn't known until the device gets a lease
+                        int hop = Subnet.parseAddress(o.nextHop.strip());
+                        check(hop != up.address() && isHost(up, hop), "Next hop must be another host address in the uplink subnet "
+                                + format(up.network()) + "/" + up.prefix());
+                    }
                     defaultRoute = "ip route 0.0.0.0 0.0.0.0 " + o.nextHop.strip();
                 } else if (viaDhcp) {
                     defaultRoute = ""; // learned from the DHCP server
@@ -707,6 +728,18 @@ final class IosConfig {
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+
+    /** Whether {@code address} is inside {@code s} and usable by a device (a /31 has no network or broadcast address). */
+    private static boolean isHost(Subnet s, int address) {
+        return (address & s.mask()) == s.network()
+                && (s.prefix() >= 31 || (address != s.network() && address != s.broadcast()));
+    }
+
+    /** CIDR blocks either nest or don't touch, so they overlap exactly when the shorter prefix contains both. */
+    private static boolean overlaps(Subnet a, Subnet b) {
+        int m = Subnet.mask(Math.min(a.prefix(), b.prefix()));
+        return (a.network() & m) == (b.network() & m);
     }
 
     private static boolean isPort(String s) {

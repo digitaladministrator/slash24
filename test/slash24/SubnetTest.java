@@ -505,6 +505,61 @@ public final class SubnetTest {
                 new IosConfig.Options());
         has("ios first long name", r.switchConfig(), " name " + "A".repeat(32) + "\n");
         has("ios duplicate long name", r.switchConfig(), " name " + "A".repeat(30) + "_2\n");
+
+        // a lone digit is read by IOS as the encryption type
+        for (String digit : new String[] {"0", "5", "7", "9"}) {
+            o = new IosConfig.Options();
+            o.routerAccess.enableSecret = digit;
+            rejects("ios single-digit enable secret " + digit, two, o);
+        }
+        o = new IosConfig.Options();
+        o.switchAccess.consolePassword = "7";
+        rejects("ios single-digit console password", two, o);
+        o.switchAccess.consolePassword = "77";
+        has("ios two-digit password is fine", IosConfig.generate(two, o).switchConfig(), " password 77\n");
+
+        // uplink address and next hop must make sense together and stay clear of the plan
+        String[][] uplinks = {
+            {"203.0.113.0/30", "203.0.113.1", "network address"},
+            {"203.0.113.3/30", "203.0.113.1", "broadcast address"},
+            {"203.0.113.2/30", "8.8.8.8", "next hop outside"},
+            {"203.0.113.2/30", "203.0.113.2", "next hop is itself"},
+            {"203.0.113.2/30", "203.0.113.3", "next hop is broadcast"},
+            {"192.168.10.5/24", "192.168.10.254", "same as plan"},
+            {"192.168.0.2/16", "192.168.0.1", "contains plan"},
+            {"192.168.10.130/30", "192.168.10.129", "inside plan"},
+        };
+        for (String[] u : uplinks) {
+            o = new IosConfig.Options();
+            o.uplink = true;
+            o.uplinkAddress = u[0];
+            o.nextHop = u[1];
+            rejects("ios uplink " + u[2], two, o);
+        }
+        o = new IosConfig.Options();
+        o.uplink = true;
+        o.uplinkAddress = "203.0.113.0/31";
+        o.nextHop = "203.0.113.1";
+        has("ios /31 uplink uses both addresses", IosConfig.generate(two, o).router(), " ip address 203.0.113.0 255.255.255.254\n");
+        o.uplinkAddress = "dhcp";
+        o.nextHop = "198.51.100.1";
+        has("ios dhcp uplink next hop unchecked", IosConfig.generate(two, o).router(), "ip route 0.0.0.0 0.0.0.0 198.51.100.1\n");
+
+        // one switch has at most 48 access ports
+        StringBuilder ten = new StringBuilder();
+        for (int i = 0; i < 10; i++) ten.append("Dept").append((char) ('A' + i)).append(" 10\n");
+        Vlsm.Plan tenVlans = Vlsm.plan(Subnet.parse("192.168.10.0/24"), Vlsm.parse(ten.toString()), false);
+        o = new IosConfig.Options();
+        o.accessPorts = 5;
+        rejects("ios more access ports than a switch has", tenVlans, o);
+        o.accessPorts = 4;
+        has("ios 40 access ports fit", IosConfig.generate(tenVlans, o).switchConfig(), "interface range FastEthernet0/37 - 40\n");
+        o = new IosConfig.Options();
+        o.switchPortType = "GigabitEthernet";
+        o.accessPorts = 24;
+        rejects("ios no gig port left for the uplink", two, o);
+        o.accessPorts = 23;
+        has("ios gig uplink on the last port", IosConfig.generate(two, o).switchConfig(), "interface GigabitEthernet0/47\n");
     }
 
     /** Text too long for Java preferences is skipped instead of throwing (1.4.2). */
