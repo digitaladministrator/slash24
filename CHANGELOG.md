@@ -4,6 +4,17 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-11-22
+
+### Fixed
+- **No more stuck blue outline on the page tabs.** Focus rings now only appear when you move around
+  with the keyboard (press Tab), and disappear again when you click. Before, the window put an
+  outline on a tab by itself whenever it opened or you came back to it.
+- **The app starts in the page's main input,** so you can type straight away.
+- **Menus close when you click away,** including clicks on the desktop or another app (the Theme
+  dropdown and the Recent lists). Clicking **Theme** again closes its menu, and a click that closes
+  a menu no longer also clicks what's underneath. (262 checks, up from 256.)
+
 ## [1.5.0] - 2026-11-22
 
 ### Changed
@@ -273,6 +284,7 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.5.1]: https://github.com/digitaladministrator/slash24/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/digitaladministrator/slash24/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/digitaladministrator/slash24/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/digitaladministrator/slash24/compare/v1.4.0...v1.4.1

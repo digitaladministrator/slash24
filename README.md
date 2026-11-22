@@ -14,7 +14,7 @@ written in plain Java with **no dependencies**. It reads your KDE colour scheme 
 | Route tools | ![Route tools, dark](docs/tools-dark.png) | ![Route tools, light](docs/tools-light.png) |
 | IOS config | ![IOS config, dark](docs/config-dark.png) | ![IOS config, light](docs/config-light.png) |
 
-Current version: **1.5.0**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+Current version: **1.5.1**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Features
 
