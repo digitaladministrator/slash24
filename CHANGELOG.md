@@ -4,6 +4,27 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-22
+
+### Changed
+- **A cleaner look.** Every page has been restyled to be calmer and easier to scan:
+  - The page tabs are one segmented control in the centre of the header; a raised pill marks the
+    current page and glides to the next one.
+  - Choices on the IOS config page and the Route tools mode switch use the same segmented style.
+  - Each page has one main action filled with your accent colour (**Copy results**, **Copy table**
+    or **Copy config**); other buttons are quieter, with no outlines.
+  - The calculator's results sit together on a card, and tables are rounded cards with quieter
+    headers.
+  - Text fields have a soft outline at rest and an accent ring while you type; invalid input is
+    still outlined in red.
+  - Focus rings only appear when you move around with the keyboard, not after clicking.
+  - On/off switches glide, and the **?** help icons are quieter until you hover them.
+- Animations follow Plasma's animation speed setting, and are off when animations are set to
+  instant. They never overshoot, and a second click mid-motion redirects them smoothly.
+
+### Fixed
+- Tables no longer have a bevelled outline whose bottom and right edges disappeared in light mode.
+
 ## [1.4.2] - 2026-11-21
 
 ### Fixed
@@ -252,6 +273,7 @@ All notable changes to Slash24 (called Subnet Calculator before 1.4.0). The form
   clipboard, a dark/light switch matched to the KDE colour scheme, and a per-user installer with an
   application-menu entry.
 
+[1.5.0]: https://github.com/digitaladministrator/slash24/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/digitaladministrator/slash24/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/digitaladministrator/slash24/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/digitaladministrator/slash24/compare/v1.3.4...v1.4.0
