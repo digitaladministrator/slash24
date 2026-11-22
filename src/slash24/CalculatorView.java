@@ -42,7 +42,7 @@ final class CalculatorView implements Page {
     private final History history;
     private final JButton export = new JButton("Export CSV…");
     private final JButton copyTable = new JButton("Copy table");
-    private final JButton copyResults = new JButton("Copy results");
+    private final JButton copyResults = Ui.primary(new JButton("Copy results"));
 
     CalculatorView(Preferences prefs) {
         history = new History(prefs, "history.calculator");
@@ -61,16 +61,27 @@ final class CalculatorView implements Page {
         grid.add(inputRow, at(0, y++, 4));
         grid.add(message, at(0, y++, 4));
         for (int i = 0; i < KEYS.length; i++) values[i] = Ui.valueField();
-        for (int r = 0; r < 6; r++, y++) {
-            grid.add(dim(KEYS[r]), at(0, y, 1));
-            grid.add(values[r], wide(at(1, y, 1)));
-            grid.add(dim(KEYS[r + 6]), at(2, y, 1));
-            grid.add(values[r + 6], wide(at(3, y, 1)));
+        // the results sit together on one card, set apart from the inputs around them
+        JPanel results = new JPanel(new GridBagLayout());
+        int ry = 0;
+        for (int r = 0; r < 6; r++, ry++) {
+            results.add(dim(KEYS[r]), at(0, ry, 1));
+            results.add(values[r], wide(at(1, ry, 1)));
+            results.add(dim(KEYS[r + 6]), at(2, ry, 1));
+            results.add(values[r + 6], wide(at(3, ry, 1)));
         }
-        grid.add(dim("Address bits"), at(0, y, 1));
-        grid.add(addressBits, at(1, y++, 3));
-        grid.add(dim("Mask bits"), at(0, y, 1));
-        grid.add(maskBits, at(1, y++, 3));
+        GridBagConstraints b = at(0, ry, 1);
+        b.insets.top = 8;
+        results.add(dim("Address bits"), b);
+        b = at(1, ry++, 3);
+        b.insets.top = 8;
+        results.add(addressBits, b);
+        results.add(dim("Mask bits"), at(0, ry, 1));
+        results.add(maskBits, at(1, ry, 3));
+        GridBagConstraints card = at(0, y++, 4);
+        card.insets.right = 0;
+        card.insets.top = 6;
+        grid.add(Ui.card(results), card);
         GridBagConstraints c = at(0, y, 1);
         c.insets.top = 10;
         grid.add(Ui.withHelp(dim("Contains?"), ""), c);

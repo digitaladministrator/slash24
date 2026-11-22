@@ -7,7 +7,6 @@ import static slash24.Ui.status;
 import java.awt.BorderLayout;
 import java.awt.Cursor;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -62,7 +61,7 @@ final class ConfigView implements Page {
     private final JScrollPane outputBox = Ui.roundedScroll(output);
     private final Ui.Problem problem = new Ui.Problem(outputBox, info);
     private final JButton save = new JButton("Save…");
-    private final JButton copy = new JButton("Copy config");
+    private final JButton copy = Ui.primary(new JButton("Copy config"));
     private final Choice device;
     private IosConfig.Result result;
 
@@ -517,29 +516,25 @@ final class ConfigView implements Page {
         return c;
     }
 
-    /** A row of compact toggle buttons where exactly one is selected. */
-    static final class Choice extends JPanel {
+    /** A segmented control where exactly one option is selected. */
+    static final class Choice extends Ui.Segmented {
         private final JToggleButton[] buttons;
         private int selected;
 
         Choice(String[] labels, int selected, IntConsumer onChange) {
-            super(new FlowLayout(FlowLayout.LEFT, 0, 0));
             this.selected = selected;
             buttons = new JToggleButton[labels.length];
             ButtonGroup group = new ButtonGroup();
             for (int i = 0; i < labels.length; i++) {
                 int index = i;
                 JToggleButton b = new JToggleButton(labels[i]);
-                b.putClientProperty("compact", true);
-                b.updateUI();
                 b.setSelected(i == selected);
                 b.addActionListener(e -> {
                     this.selected = index;
                     onChange.accept(index);
                 });
                 group.add(b);
-                if (i > 0) add(Box.createHorizontalStrut(6));
-                add(b);
+                addSegment(b);
                 buttons[i] = b;
             }
         }

@@ -2,6 +2,7 @@ package slash24;
 
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
@@ -93,7 +94,7 @@ public final class Ui {
     private static final boolean WINDOWS = System.getProperty("os.name", "").startsWith("Windows");
     static final Font SANS = new Font(WINDOWS ? "Segoe UI" : "Noto Sans", Font.PLAIN, 13);
     static final Font MONO = new Font(WINDOWS ? "Consolas" : "Noto Sans Mono", Font.PLAIN, 13);
-    static final float ARC = 8;
+    static final float ARC = 8, CARD_ARC = 12;
 
     static void installLookAndFeel() {
         try {
@@ -332,13 +333,26 @@ public final class Ui {
         table.setDefaultRenderer(Object.class, new Cells());
         table.getTableHeader().setDefaultRenderer(new HeaderCells());
         table.getTableHeader().setReorderingAllowed(false);
-        table.setRowHeight(26);
+        table.setRowHeight(28);
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension());
         table.setFillsViewportHeight(true);
         TableColumnModel columns = table.getColumnModel();
         for (int i = 0; i < widths.length; i++) columns.getColumn(i).setPreferredWidth(widths[i]);
-        JScrollPane scroll = new JScrollPane(table);
+        JScrollPane scroll = new JScrollPane(table) {
+            @Override public void updateUI() {
+                super.updateUI();
+                setOpaque(false);
+                setBorder(new CardBorder());
+            }
+
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = smooth(g);
+                g2.setColor(theme.view());
+                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), CARD_ARC, CARD_ARC));
+                g2.dispose();
+            }
+        };
         scroll.setPreferredSize(new Dimension(0, 160)); // grows into the remaining height
         return scroll;
     }
@@ -443,9 +457,9 @@ public final class Ui {
         }
     }
 
-    /** Header cells aligned like the column below them. */
+    /** Header cells aligned like the column below them: small, secondary, over a hairline. */
     static final class HeaderCells extends DefaultTableCellRenderer {
-        private static final Font BOLD = SANS.deriveFont(Font.BOLD);
+        private static final Font HEADER = SANS.deriveFont(Font.BOLD, 12f);
         private Theme borderTheme;
         private CompoundBorder border;
 
@@ -453,9 +467,9 @@ public final class Ui {
             super.getTableCellRendererComponent(t, v, false, false, row, column);
             if (borderTheme != theme) { // the border's colour follows the theme
                 borderTheme = theme;
-                border = new CompoundBorder(new MatteBorder(0, 0, 1, 0, theme.border()), new EmptyBorder(6, 10, 6, 10));
+                border = new CompoundBorder(new MatteBorder(0, 0, 1, 0, theme.hairline()), new EmptyBorder(7, 10, 7, 10));
             }
-            setFont(BOLD);
+            setFont(HEADER);
             setForeground(theme.dim());
             setBackground(theme.view());
             setHorizontalAlignment(((Rows) t.getModel()).numeric(t.convertColumnIndexToModel(column))
@@ -569,20 +583,58 @@ public final class Ui {
         }
     }
 
-    /** Rounded input outline: accent when focused, the negative colour when the input is invalid. */
+    /** A 2 px accent ring just inside the edge, the one focus indicator used everywhere. */
+    static void focusRing(Graphics2D g2, int w, int h, float arc) {
+        g2.setColor(theme.accent());
+        g2.setStroke(new BasicStroke(2f));
+        g2.draw(new RoundRectangle2D.Float(1, 1, w - 2, h - 2, arc, arc));
+    }
+
+    /**
+     * Rounded input outline: a quiet hairline at rest, the accent focus ring while typing, and the
+     * negative colour when the input is invalid.
+     */
     static final class Round extends AbstractBorder implements UIResource {
         @Override public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
             Graphics2D g2 = smooth(g);
+            g2.translate(x, y);
             boolean invalid = Boolean.TRUE.equals(((JComponent) c).getClientProperty("invalid"));
             boolean focused = c.hasFocus()
                     || c instanceof JScrollPane s && s.getViewport().getView() != null && s.getViewport().getView().hasFocus();
-            g2.setColor(invalid ? theme.negative() : focused ? theme.accent() : theme.border());
-            g2.draw(new RoundRectangle2D.Float(x + .5f, y + .5f, w - 1, h - 1, ARC, ARC));
+            if (invalid) {
+                g2.setColor(theme.negative());
+                g2.setStroke(new BasicStroke(focused ? 2f : 1.5f));
+                g2.draw(new RoundRectangle2D.Float(1, 1, w - 2, h - 2, ARC, ARC));
+            } else if (focused) {
+                focusRing(g2, w, h, ARC);
+            } else {
+                g2.setColor(theme.hairline());
+                g2.draw(new RoundRectangle2D.Float(.5f, .5f, w - 1, h - 1, ARC, ARC));
+            }
             g2.dispose();
         }
 
         @Override public Insets getBorderInsets(Component c, Insets insets) {
-            insets.set(6, 9, 6, 9);
+            insets.set(6, 10, 6, 10);
+            return insets;
+        }
+    }
+
+    /**
+     * Outline of a card-style scroll pane; its insets keep square content inside the rounded corners.
+     * Deliberately not a UIResource: JTable replaces a UIResource border on its scroll pane with the
+     * look and feel's bevelled "Table.scrollPaneBorder" when it is added to a window.
+     */
+    static final class CardBorder extends AbstractBorder {
+        @Override public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.hairline());
+            g2.draw(new RoundRectangle2D.Float(x + .5f, y + .5f, w - 1, h - 1, CARD_ARC, CARD_ARC));
+            g2.dispose();
+        }
+
+        @Override public Insets getBorderInsets(Component c, Insets insets) {
+            insets.set(3, 3, 3, 3);
             return insets;
         }
     }
@@ -613,7 +665,11 @@ public final class Ui {
         }
     }
 
-    /** Flat rounded buttons; selected toggle buttons (the page tabs) are tinted with the accent. */
+    /**
+     * Flat rounded buttons in four styles, set with the "style" client property: the default quiet
+     * fill, "primary" (accent fill, one per page), "plain" (fill only on hover) and "segment" (part of
+     * a {@link Segmented} control, which draws the selection). Feedback shows on press, not release.
+     */
     public static final class FlatButtonUI extends BasicButtonUI {
         public static ComponentUI createUI(JComponent c) { return new FlatButtonUI(); }
 
@@ -621,22 +677,39 @@ public final class Ui {
             super.installDefaults(b);
             b.setOpaque(false);
             b.setRolloverEnabled(true);
-            boolean compact = Boolean.TRUE.equals(b.getClientProperty("compact"));
-            b.setBorder(compact ? new BorderUIResource.EmptyBorderUIResource(4, 10, 4, 10)
+            b.setRequestFocusEnabled(false); // clicks don't take focus, so the focus ring means keyboard focus
+            Object style = b.getClientProperty("style");
+            b.setBorder("segment".equals(style) ? new BorderUIResource.EmptyBorderUIResource(4, 12, 4, 12)
+                    : Boolean.TRUE.equals(b.getClientProperty("compact")) ? new BorderUIResource.EmptyBorderUIResource(4, 10, 4, 10)
                     : new BorderUIResource.EmptyBorderUIResource(7, 16, 7, 16));
+            if ("primary".equals(style)) b.setFont(SANS.deriveFont(Font.BOLD));
         }
 
         @Override public void paint(Graphics g, JComponent c) {
             AbstractButton b = (AbstractButton) c;
             ButtonModel m = b.getModel();
-            Color base = m.isSelected() ? Theme.mix(theme.window(), theme.accent(), .3f) : theme.window();
-            float tint = !b.isEnabled() ? .05f : m.isPressed() ? .24f : m.isRollover() ? .16f : .1f;
+            Object style = b.getClientProperty("style");
+            boolean down = m.isPressed() && m.isArmed(), hover = m.isRollover() && b.isEnabled();
             Graphics2D g2 = smooth(g);
-            RoundRectangle2D shape = new RoundRectangle2D.Float(.5f, .5f, c.getWidth() - 1, c.getHeight() - 1, ARC, ARC);
-            g2.setColor(Theme.mix(base, theme.fg(), tint));
-            g2.fill(shape);
-            g2.setColor(b.isFocusOwner() || m.isSelected() ? theme.accent() : theme.border());
-            g2.draw(shape);
+            RoundRectangle2D shape = new RoundRectangle2D.Float(0, 0, c.getWidth(), c.getHeight(), ARC, ARC);
+            Color fill = null;
+            if ("primary".equals(style)) {
+                Color p = theme.primary();
+                fill = !b.isEnabled() ? Theme.mix(theme.window(), p, .35f)
+                        : down ? Theme.mix(p, Color.BLACK, .15f) : hover ? Theme.mix(p, Color.WHITE, .1f) : p;
+            } else if ("segment".equals(style)) {
+                if (!m.isSelected() && b.isEnabled() && (hover || down)) fill = Theme.mix(theme.control(), theme.fg(), down ? .1f : .05f);
+            } else if ("plain".equals(style)) {
+                if (b.isEnabled() && (hover || down)) fill = Theme.mix(theme.window(), theme.fg(), down ? .14f : .08f);
+            } else {
+                fill = !b.isEnabled() ? Theme.mix(theme.window(), theme.control(), .5f)
+                        : Theme.mix(theme.control(), theme.fg(), down ? .1f : hover ? .05f : 0f);
+            }
+            if (fill != null) {
+                g2.setColor(fill);
+                g2.fill(shape);
+            }
+            if (b.isFocusOwner()) focusRing(g2, c.getWidth(), c.getHeight(), ARC);
             g2.dispose();
             super.paint(g, c);
         }
@@ -673,25 +746,188 @@ public final class Ui {
         }
     }
 
+    // ---- motion --------------------------------------------------------------------------------
+
+    /**
+     * A critically damped spring (no overshoot) driving one value toward a target. Retargeting keeps
+     * the current position and velocity, so a second click mid-motion redirects smoothly instead of
+     * jumping or restarting. {@code response} is roughly the time to settle, in seconds, before Plasma's
+     * animation speed setting is applied; with animations off the value jumps straight to its target.
+     */
+    static final class Spring {
+        private final double response;
+        private final Runnable onFrame;
+        private final Timer timer;
+        private double value, velocity, target;
+        private long last;
+
+        Spring(double value, double response, Runnable onFrame) {
+            this.value = target = value;
+            this.response = response;
+            this.onFrame = onFrame;
+            timer = new Timer(1000 / 120, e -> step());
+            timer.setCoalesce(true);
+        }
+
+        double value() { return value; }
+        boolean moving() { return timer.isRunning(); }
+
+        void jump(double to) {
+            timer.stop();
+            value = target = to;
+            velocity = 0;
+        }
+
+        void to(double to) {
+            target = to;
+            if (Theme.animationScale() == 0) {
+                jump(to);
+                onFrame.run();
+            } else if (!timer.isRunning()) {
+                last = System.nanoTime();
+                timer.start();
+            }
+        }
+
+        private void step() {
+            long now = System.nanoTime();
+            double dt = Math.min((now - last) / 1e9, .05);
+            last = now;
+            double omega = 2 * Math.PI / (response * Theme.animationScale());
+            for (int i = 0; i < 4; i++) { // a few small steps keep the integration stable on slow frames
+                double h = dt / 4;
+                velocity += (-omega * omega * (value - target) - 2 * omega * velocity) * h;
+                value += velocity * h;
+            }
+            if (Math.abs(value - target) < .3 && Math.abs(velocity) < 3) jump(target);
+            onFrame.run();
+        }
+    }
+
     // ---- custom components ---------------------------------------------------------------------
 
-    /** Breeze-style on/off switch. */
+    /** Marks the one main action of a page: filled with the accent, white text. */
+    static <B extends AbstractButton> B primary(B b) {
+        b.putClientProperty("style", "primary");
+        b.setForeground(Color.WHITE);
+        b.updateUI();
+        return b;
+    }
+
+    /** A button with no fill until hovered, for actions that shouldn't compete with the content. */
+    static <B extends AbstractButton> B plain(B b) {
+        b.putClientProperty("style", "plain");
+        b.updateUI();
+        return b;
+    }
+
+    /** A rounded surface that groups related content, like a grouped list on macOS. */
+    static JPanel card(JComponent content) {
+        JPanel p = new JPanel(new BorderLayout()) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = smooth(g);
+                RoundRectangle2D shape = new RoundRectangle2D.Float(.5f, .5f, getWidth() - 1, getHeight() - 1, CARD_ARC, CARD_ARC);
+                g2.setColor(theme.view());
+                g2.fill(shape);
+                g2.setColor(theme.hairline());
+                g2.draw(shape);
+                g2.dispose();
+            }
+        };
+        p.setOpaque(false);
+        content.setOpaque(false);
+        p.setBorder(new EmptyBorder(10, 14, 10, 14));
+        p.add(content);
+        return p;
+    }
+
+    /**
+     * Mutually exclusive choices sharing one track, with a raised pill under the selected one that
+     * glides to a new choice (macOS segmented control). The buttons keep their own action listeners
+     * and the caller's button group.
+     */
+    static class Segmented extends JPanel {
+        private final List<AbstractButton> segments = new java.util.ArrayList<>();
+        private final Spring x = new Spring(0, .3, this::repaint), w = new Spring(0, .3, this::repaint);
+        private boolean placed;
+
+        Segmented(AbstractButton... buttons) {
+            super(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            setOpaque(false);
+            setBorder(new EmptyBorder(2, 2, 2, 2));
+            for (AbstractButton b : buttons) addSegment(b);
+        }
+
+        final void addSegment(AbstractButton b) {
+            b.putClientProperty("style", "segment");
+            b.updateUI();
+            b.addItemListener(e -> glide());
+            segments.add(b);
+            add(b);
+        }
+
+        private AbstractButton chosen() {
+            for (AbstractButton b : segments) if (b.isSelected()) return b;
+            return null;
+        }
+
+        private void glide() {
+            AbstractButton s = chosen();
+            if (s != null && placed && s.getWidth() > 0) {
+                x.to(s.getX());
+                w.to(s.getWidth());
+            }
+            repaint();
+        }
+
+        @Override public void doLayout() {
+            super.doLayout();
+            AbstractButton s = chosen();
+            if (s != null && s.getWidth() > 0 && !x.moving()) { // settle in place after any layout change
+                x.jump(s.getX());
+                w.jump(s.getWidth());
+                placed = true;
+            }
+        }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = smooth(g);
+            g2.setColor(theme.control());
+            // only as wide as the segments, even when a layout stretches the control across a row
+            AbstractButton last = segments.isEmpty() ? null : segments.getLast();
+            float trackWidth = last == null ? getWidth() : Math.min(getWidth(), last.getX() + last.getWidth() + getInsets().right);
+            g2.fill(new RoundRectangle2D.Float(0, 0, trackWidth, getHeight(), ARC + 4, ARC + 4));
+            if (chosen() != null && placed) {
+                Insets in = getInsets();
+                float px = (float) x.value(), pw = (float) w.value(), ph = getHeight() - in.top - in.bottom;
+                if (!theme.dark()) { // a soft drop shadow lifts the pill off the track
+                    g2.setColor(new Color(0, 0, 0, 22));
+                    g2.fill(new RoundRectangle2D.Float(px, in.top + 1, pw, ph, ARC, ARC));
+                }
+                g2.setColor(theme.pill());
+                g2.fill(new RoundRectangle2D.Float(px, in.top, pw, ph, ARC, ARC));
+            }
+            g2.dispose();
+        }
+    }
+
+    /** On/off switch whose knob glides to its new side (0 = off, 1 = on). */
     static final class Switch extends JComponent {
         private boolean on;
         private final Consumer<Boolean> action;
+        private final Spring knob;
 
         Switch(boolean on, String tooltip, Consumer<Boolean> action) {
             this.on = on;
             this.action = action;
+            knob = new Spring(on ? 1 : 0, .25, this::repaint);
             setFocusable(true);
+            setRequestFocusEnabled(false); // like buttons: the focus ring only appears with the keyboard
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             setToolTipText(tooltip);
             addFocusListener(REPAINT_ON_FOCUS);
             addMouseListener(new MouseAdapter() {
-                @Override public void mousePressed(MouseEvent e) {
-                    requestFocusInWindow();
-                    toggle();
-                }
+                @Override public void mousePressed(MouseEvent e) { toggle(); }
             });
             addKeyListener(new KeyAdapter() {
                 @Override public void keyPressed(KeyEvent e) {
@@ -705,6 +941,7 @@ public final class Ui {
         void toggle() {
             if (!isEnabled()) return;
             on = !on;
+            knob.to(on ? 1 : 0); // the knob moves first, so feedback is immediate even if the action is slow
             action.accept(on);
             repaint();
         }
@@ -725,21 +962,21 @@ public final class Ui {
             return l;
         }
 
-        @Override public Dimension getPreferredSize() { return new Dimension(40, 22); }
+        @Override public Dimension getPreferredSize() { return new Dimension(38, 22); }
 
         @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = smooth(g);
             if (!isEnabled()) g2.setComposite(AlphaComposite.SrcOver.derive(.45f));
             int w = getWidth(), h = getHeight(), d = h - 6;
-            g2.setColor(on ? theme.accent() : Theme.mix(theme.window(), theme.fg(), .3f));
+            float t = (float) Math.clamp(knob.value(), 0, 1);
+            g2.setColor(Theme.mix(Theme.mix(theme.window(), theme.fg(), .22f), theme.accent(), t)); // track colour follows the knob
             g2.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
-            if (isFocusOwner()) {
-                g2.setColor(theme.fg());
-                g2.setStroke(new BasicStroke(1.5f));
-                g2.draw(new RoundRectangle2D.Float(.75f, .75f, w - 1.5f, h - 1.5f, h, h));
-            }
+            float kx = 3 + t * (w - d - 6);
+            g2.setColor(new Color(0, 0, 0, 40));
+            g2.fill(new Ellipse2D.Float(kx, 3.8f, d, d));
             g2.setColor(Color.WHITE);
-            g2.fillOval(on ? w - d - 3 : 3, 3, d, d);
+            g2.fill(new Ellipse2D.Float(kx, 3, d, d));
+            if (isFocusOwner()) focusRing(g2, w, h, h);
             g2.dispose();
         }
     }
@@ -847,9 +1084,15 @@ public final class Ui {
      * Tooltips stay up long enough to read (see {@link #installTooltipTiming()}).
      */
     static final class HelpIcon extends JComponent {
+        private boolean hover;
+
         HelpIcon(Help.Entry entry) {
             setEntry(entry);
             setFocusable(false);
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e) { hover = false; repaint(); }
+            });
         }
 
         void setEntry(Help.Entry entry) {
@@ -871,7 +1114,7 @@ public final class Ui {
 
         @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = smooth(g);
-            g2.setColor(theme.dim());
+            g2.setColor(hover ? theme.accent() : Theme.mix(theme.window(), theme.dim(), .6f)); // present, but quieter than the label
             g2.setStroke(new BasicStroke(1.2f));
             g2.draw(new Ellipse2D.Float(1, 1, 13, 13));
             g2.setFont(SANS.deriveFont(Font.BOLD, 10f));

@@ -35,7 +35,7 @@ final class VlsmView implements Page {
     private final PlanRows rows = new PlanRows();
     private final History history;
     private final JButton export = new JButton("Export CSV…");
-    private final JButton copyTable = new JButton("Copy table");
+    private final JButton copyTable = Ui.primary(new JButton("Copy table"));
     private final List<Runnable> planListeners = new ArrayList<>();
     private Vlsm.Plan plan;
 

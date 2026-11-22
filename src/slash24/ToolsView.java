@@ -34,7 +34,7 @@ final class ToolsView implements Page {
     private final Ui.Problem fromProblem = new Ui.Problem(from, info), toProblem = new Ui.Problem(to, info);
     private final BlockRows rows = new BlockRows();
     private final JButton export = new JButton("Export CSV…");
-    private final JButton copyTable = new JButton("Copy table");
+    private final JButton copyTable = Ui.primary(new JButton("Copy table"));
     private final CardLayout cards = new CardLayout();
     private final JPanel inputs = new JPanel(cards);
     private final Preferences prefs;
@@ -70,7 +70,7 @@ final class ToolsView implements Page {
 
         JPanel grid = new JPanel(new GridBagLayout());
         int y = 0;
-        grid.add(Ui.row(summarizeTab, rangeTab), at(0, y++, 1));
+        grid.add(Ui.row(new Ui.Segmented(summarizeTab, rangeTab)), at(0, y++, 1));
         GridBagConstraints c = at(0, y++, 1);
         c.insets.top = 12;
         grid.add(inputs, c);

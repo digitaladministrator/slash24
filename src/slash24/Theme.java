@@ -82,6 +82,42 @@ record Theme(boolean dark, Color window, Color view, Color alt, Color fg, Color 
 
     Color border() { return mix(window, fg, dark ? .2f : .25f); }
     Color selection() { return mix(view, accent, .35f); }
+    /** Quiet outline for fields, cards and separators: present, but never louder than the content. */
+    Color hairline() { return mix(window, fg, dark ? .14f : .15f); }
+    /** Fill for secondary buttons and the track of segmented controls. */
+    Color control() { return mix(window, fg, dark ? .09f : .07f); }
+    /** The raised piece marking the selected segment. */
+    Color pill() { return dark ? mix(window, fg, .25f) : view; }
+
+    /** Background for the one primary button on a page: the accent, darkened until white text reads clearly on it. */
+    Color primary() {
+        Color c = accent;
+        for (int i = 0; i < 20 && contrast(c, Color.WHITE) < 4.5; i++) c = mix(c, Color.BLACK, .05f);
+        return c;
+    }
+
+    private static double contrast(Color a, Color b) {
+        double la = luminance(a), lb = luminance(b);
+        return (Math.max(la, lb) + .05) / (Math.min(la, lb) + .05);
+    }
+
+    private static double luminance(Color c) {
+        double[] rgb = {c.getRed() / 255.0, c.getGreen() / 255.0, c.getBlue() / 255.0};
+        for (int i = 0; i < 3; i++) rgb[i] = rgb[i] <= .04045 ? rgb[i] / 12.92 : Math.pow((rgb[i] + .055) / 1.055, 2.4);
+        return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+    }
+
+    /**
+     * Plasma's animation speed setting (System Settings > Animation speed): 1 is normal, larger is
+     * slower, 0 is instant. Animations scale with it, so turning animations off turns them off here too.
+     */
+    static double animationScale() {
+        try {
+            return Math.max(0, Double.parseDouble(kde.getOrDefault("KDE/AnimationDurationFactor", "1")));
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
 
     static Color mix(Color a, Color b, float t) {
         return new Color(Math.round(a.getRed() + (b.getRed() - a.getRed()) * t),

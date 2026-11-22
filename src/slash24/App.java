@@ -2,14 +2,17 @@ package slash24;
 
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Insets;
+import java.awt.LayoutManager;
 import java.awt.event.ActionEvent;
 import java.util.List;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
 import javax.swing.AbstractAction;
-import javax.swing.Box;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -91,13 +94,15 @@ public final class App {
         theme.setToolTipText("Match the Plasma colour scheme, or choose light or dark (Ctrl+D toggles)");
         theme.addActionListener(e -> themeMenu().show(theme, 0, theme.getHeight()));
         updateThemeButton();
-        JPanel header = new JPanel(new BorderLayout());
-        header.add(Ui.row(title, Ui.dim(VERSION), Box.createHorizontalStrut(12), tabs[0], tabs[1], tabs[2], tabs[3]), BorderLayout.WEST);
-        header.add(Ui.row(theme), BorderLayout.EAST);
-        header.setBorder(new EmptyBorder(0, 0, 14, 0));
+        Ui.plain(theme);
+        JPanel header = new JPanel(new HeaderLayout());
+        header.add(Ui.row(title, Ui.dim(VERSION)));
+        header.add(new Ui.Segmented(tabs));
+        header.add(theme);
+        header.setBorder(new EmptyBorder(0, 0, 18, 0));
 
         JPanel root = new JPanel(new BorderLayout());
-        root.setBorder(new EmptyBorder(16, 18, 16, 18));
+        root.setBorder(new EmptyBorder(16, 22, 18, 22));
         root.add(header, BorderLayout.NORTH);
         root.add(content, BorderLayout.CENTER);
 
@@ -116,6 +121,38 @@ public final class App {
         frame.setMinimumSize(new Dimension(900, 680));
         frame.setSize(1100, 820);
         frame.setLocationRelativeTo(null);
+    }
+
+    /**
+     * Title on the left, the page switcher in the true centre of the window (not the centre of what's
+     * left over), the theme button on the right; all vertically centred.
+     */
+    private static final class HeaderLayout implements LayoutManager {
+        @Override public void addLayoutComponent(String name, Component c) { }
+        @Override public void removeLayoutComponent(Component c) { }
+        @Override public Dimension minimumLayoutSize(Container p) { return preferredLayoutSize(p); }
+
+        @Override public Dimension preferredLayoutSize(Container p) {
+            int w = 0, h = 0;
+            for (Component c : p.getComponents()) {
+                w += c.getPreferredSize().width;
+                h = Math.max(h, c.getPreferredSize().height);
+            }
+            Insets in = p.getInsets();
+            return new Dimension(w + 48 + in.left + in.right, h + in.top + in.bottom);
+        }
+
+        @Override public void layoutContainer(Container p) {
+            Insets in = p.getInsets();
+            int w = p.getWidth() - in.left - in.right, h = p.getHeight() - in.top - in.bottom;
+            Component left = p.getComponent(0), center = p.getComponent(1), right = p.getComponent(2);
+            Dimension l = left.getPreferredSize(), c = center.getPreferredSize(), r = right.getPreferredSize();
+            left.setBounds(in.left, in.top + (h - l.height) / 2, l.width, l.height);
+            right.setBounds(in.left + w - r.width, in.top + (h - r.height) / 2, r.width, r.height);
+            // centred, unless that would overlap the title or the theme button
+            int cx = Math.clamp(in.left + (w - c.width) / 2, in.left + l.width + 24, Math.max(in.left + l.width + 24, in.left + w - r.width - 24 - c.width));
+            center.setBounds(cx, in.top + (h - c.height) / 2, c.width, c.height);
+        }
     }
 
     private void showPage(int index) {
