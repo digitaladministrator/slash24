@@ -1,5 +1,6 @@
 package slash24;
 
+import java.awt.AWTEvent;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
@@ -12,11 +13,12 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Frame;
-import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Graphics;
 import java.awt.GridBagConstraints;
 import java.awt.Image;
 import java.awt.Insets;
+import java.awt.KeyboardFocusManager;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
@@ -55,6 +57,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.MenuSelectionManager;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -103,6 +106,47 @@ public final class Ui {
             throw new IllegalStateException(e);
         }
     }
+
+    /**
+     * App-wide input tracking, installed once at startup:
+     * <ul>
+     * <li>Focus rings follow "focus-visible" rules: a key press shows them, a mouse press hides them.
+     *     Swing focuses a control by itself when the window opens or comes back (often a page tab),
+     *     and a ring the user didn't ask for looks like a stuck highlight.</li>
+     * <li>Open menus close when the window loses focus. On Wayland a click on the desktop or another
+     *     app never reaches this window, so the usual click-away handling can't see it.</li>
+     * </ul>
+     */
+    static void installInputTracking() {
+        if (inputTracking) return;
+        inputTracking = true;
+        Toolkit.getDefaultToolkit().addAWTEventListener(Ui::noteInput, AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK);
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("activeWindow", e -> {
+            if (e.getNewValue() == null) MenuSelectionManager.defaultManager().clearSelectedPath();
+        });
+    }
+
+    private static boolean inputTracking, keyboardFocus;
+
+    /** Records whether the last input was the keyboard; repaints the focused control when that changes. */
+    static void noteInput(AWTEvent e) {
+        boolean keyboard;
+        if (e instanceof KeyEvent k && k.getID() == KeyEvent.KEY_PRESSED && !isModifier(k.getKeyCode())) keyboard = true;
+        else if (e.getID() == MouseEvent.MOUSE_PRESSED) keyboard = false;
+        else return;
+        if (keyboard == keyboardFocus) return;
+        keyboardFocus = keyboard;
+        Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        if (owner != null) owner.repaint();
+    }
+
+    private static boolean isModifier(int code) {
+        return code == KeyEvent.VK_SHIFT || code == KeyEvent.VK_CONTROL || code == KeyEvent.VK_ALT
+                || code == KeyEvent.VK_META || code == KeyEvent.VK_ALT_GRAPH || code == KeyEvent.VK_WINDOWS;
+    }
+
+    /** Whether {@code c} should draw a focus ring: it has focus and the user is moving around with the keyboard. */
+    static boolean focusVisible(Component c) { return keyboardFocus && c.isFocusOwner(); }
 
     /** Hover help shows quickly and stays up long enough to read. */
     static void installTooltipTiming() {
@@ -571,6 +615,7 @@ public final class Ui {
                 "ScrollPane.border", new BorderUIResource(new LineBorder(t.border())),
                 "ScrollBar.width", 10, "ScrollBar.background", view, "ScrollBar.track", view, "ScrollBar.thumb", dim,
                 "PopupMenu.background", view, "PopupMenu.foreground", fg,
+                "PopupMenu.consumeEventOnClose", Boolean.TRUE, // a click away only closes the menu, as on macOS
                 "PopupMenu.border", new BorderUIResource(new CompoundBorder(new LineBorder(t.border()), new EmptyBorder(4, 0, 4, 0))),
                 "MenuItem.background", view, "MenuItem.foreground", fg, "MenuItem.disabledForeground", dim,
                 "MenuItem.selectionBackground", selection, "MenuItem.selectionForeground", fg,
@@ -709,7 +754,7 @@ public final class Ui {
                 g2.setColor(fill);
                 g2.fill(shape);
             }
-            if (b.isFocusOwner()) focusRing(g2, c.getWidth(), c.getHeight(), ARC);
+            if (focusVisible(b)) focusRing(g2, c.getWidth(), c.getHeight(), ARC);
             g2.dispose();
             super.paint(g, c);
         }
@@ -976,7 +1021,7 @@ public final class Ui {
             g2.fill(new Ellipse2D.Float(kx, 3.8f, d, d));
             g2.setColor(Color.WHITE);
             g2.fill(new Ellipse2D.Float(kx, 3, d, d));
-            if (isFocusOwner()) focusRing(g2, w, h, h);
+            if (focusVisible(this)) focusRing(g2, w, h, h);
             g2.dispose();
         }
     }

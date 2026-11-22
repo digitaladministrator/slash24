@@ -9,6 +9,8 @@ import java.awt.Font;
 import java.awt.Insets;
 import java.awt.LayoutManager;
 import java.awt.event.ActionEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.List;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
@@ -61,6 +63,7 @@ public final class App {
         SwingUtilities.invokeLater(() -> {
             Ui.installLookAndFeel();
             Ui.installTooltipTiming();
+            Ui.installInputTracking();
             App app = new App(prefs);
             app.frame.setVisible(true);
             app.followDesktop();
@@ -115,6 +118,10 @@ public final class App {
             bind(rootPane, "ctrl " + (i + 1), tab::doClick);
         }
 
+        // start in the page's main input, so typing works at once (Swing would otherwise pick a tab)
+        frame.addWindowListener(new WindowAdapter() {
+            @Override public void windowOpened(WindowEvent e) { page(page).focusInput(); }
+        });
         frame.setContentPane(root);
         frame.setIconImages(Ui.icons());
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

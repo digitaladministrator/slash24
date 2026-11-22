@@ -73,6 +73,7 @@ public final class SubnetTest {
         iosEdgeCases();
         parsingEdgeCases();
         remember();
+        focusAndMenus();
         helpCoverage();
 
         if (failures > 0) {
@@ -613,6 +614,46 @@ public final class SubnetTest {
         for (String f : new String[] {"+1", "-1", "@SUM(A1)", "\tx"}) eq("csv defuse " + f.strip(), "'" + f, Csv.defuse(f));
         eq("csv plain name untouched", "Sales", Csv.defuse("Sales"));
         eq("csv empty untouched", "", Csv.defuse(""));
+    }
+
+    /**
+     * Focus rings only after keyboard use, and menus that close on a click away or when the window
+     * loses focus (1.5.1): Swing focuses a tab by itself, which showed as a stuck highlight.
+     */
+    private static void focusAndMenus() {
+        Ui.theme = Theme.of(false);
+        Ui.installLookAndFeel();
+        javax.swing.JButton b = new javax.swing.JButton("x");
+        Ui.noteInput(new java.awt.event.KeyEvent(b, java.awt.event.KeyEvent.KEY_PRESSED, 0, 0, java.awt.event.KeyEvent.VK_TAB, '\t'));
+        eq("focus ring not on an unfocused control", false, Ui.focusVisible(b));
+        Ui.noteInput(new java.awt.event.MouseEvent(b, java.awt.event.MouseEvent.MOUSE_PRESSED, 0, 0, 1, 1, 1, false));
+        java.lang.reflect.Field kf;
+        try {
+            kf = Ui.class.getDeclaredField("keyboardFocus");
+            kf.setAccessible(true);
+            eq("mouse press hides focus rings", false, kf.get(null));
+            Ui.noteInput(new java.awt.event.KeyEvent(b, java.awt.event.KeyEvent.KEY_PRESSED, 0, java.awt.event.InputEvent.SHIFT_DOWN_MASK,
+                    java.awt.event.KeyEvent.VK_SHIFT, java.awt.event.KeyEvent.CHAR_UNDEFINED));
+            eq("a modifier alone doesn't show focus rings", false, kf.get(null));
+            Ui.noteInput(new java.awt.event.KeyEvent(b, java.awt.event.KeyEvent.KEY_PRESSED, 0, 0, java.awt.event.KeyEvent.VK_TAB, '\t'));
+            eq("Tab shows focus rings", true, kf.get(null));
+            Ui.noteInput(new java.awt.event.MouseEvent(b, java.awt.event.MouseEvent.MOUSE_PRESSED, 0, 0, 1, 1, 1, false));
+        } catch (ReflectiveOperationException e) {
+            fail("focus tracking: " + e);
+        }
+        eq("a click away only closes a menu", true, javax.swing.UIManager.getBoolean("PopupMenu.consumeEventOnClose"));
+
+        // the "activeWindow" listener clears open menus when the window loses focus
+        Ui.installInputTracking();
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+        javax.swing.JMenuItem item = new javax.swing.JMenuItem("Light");
+        menu.add(item);
+        javax.swing.MenuSelectionManager.defaultManager().setSelectedPath(new javax.swing.MenuElement[] {menu, item});
+        java.beans.PropertyChangeEvent lost = new java.beans.PropertyChangeEvent(
+                java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager(), "activeWindow", "the window", null);
+        for (java.beans.PropertyChangeListener l : java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                .getPropertyChangeListeners("activeWindow")) l.propertyChange(lost);
+        eq("menus close when the window loses focus", 0, javax.swing.MenuSelectionManager.defaultManager().getSelectedPath().length);
     }
 
     /** Text too long for Java preferences is skipped instead of throwing (1.4.2). */
